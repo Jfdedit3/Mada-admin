@@ -13,7 +13,7 @@ local Notification = loadstring(game:HttpGet("https://raw.githubusercontent.com/
  Notify({
 		 Description = "https://discord.gg/c24QBGCu3V";
 		 Title = "Join the Discord Server!";
-		 Duration = 20;
+		 Duration = 10;
 		 
 });
  
