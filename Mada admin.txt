@@ -50,7 +50,7 @@ local Notification = loadstring(game:HttpGet("https://raw.githubusercontent.com/
  }
  
  -- [[ Version ]] -- 
- currentversion = 1.13
+ currentversion = 1
  
  --[[ VARIABLES ]]--
  PlaceId, JobId = game.PlaceId, game.JobId
