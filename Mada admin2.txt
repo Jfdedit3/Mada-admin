@@ -130,18 +130,24 @@ Interface.Parent = Services.CoreGui
 Interface.Servers.Visible = false
 Interface.Options.Visible = false
 Interface.Commands.Visible = false
-Interface.Top.Visible = false
+if Interface:FindFirstChild("Top") then
+	Interface.Top.Visible = false
+end
 Interface.Logs.Visible = false
 Interface.Introduction.Visible = false
 Interface.CmdBar.Visible = false
 Interface.Notification.Visible = true
-Interface.Notification.Notification.Visible = false
-Interface.Top.PlayerIcon.Image =
-	Services.Players:GetUserThumbnailAsync(
-		Services.LocalPlayer.UserId,
-		Enum.ThumbnailType.HeadShot,
-		Enum.ThumbnailSize.Size420x420
-	)
+if Interface.Notification:FindFirstChild("Notification") then
+	Interface.Notification.Notification.Visible = false
+end
+if Interface:FindFirstChild("Top") and Interface.Top:FindFirstChild("PlayerIcon") then
+	Interface.Top.PlayerIcon.Image =
+		Services.Players:GetUserThumbnailAsync(
+			Services.LocalPlayer.UserId,
+			Enum.ThumbnailType.HeadShot,
+			Enum.ThumbnailSize.Size420x420
+		)
+end
 
 local NFuncs = {} --// MadaFunctions
 local PlayerFuncs = {}
@@ -157,7 +163,7 @@ local UIFuncs = {
 	},
 	--// Notification
 	NotificationHandler = Interface.Notification,
-	OriginalNotificationSize = Interface.Notification.Notification.Size,
+	OriginalNotificationSize = UDim2.new(0, 240, 0, 58),
 	NotificationTweenSpeed = 0.2,
 	NotificationStyles = {
 		EasingStyle = Enum.EasingStyle.Sine,
@@ -176,6 +182,26 @@ UIFuncs.SmoothStyles = {
 	FadeFast = TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
 	Slide = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 }
+
+function UIFuncs.GetNotificationTemplate()
+	local Handler = UIFuncs.NotificationHandler
+	if not Handler then
+		return nil
+	end
+
+	local DirectTemplate = Handler:FindFirstChild("Notification")
+	if DirectTemplate and DirectTemplate:IsA("Frame") then
+		return DirectTemplate
+	end
+
+	for _, Child in next, Handler:GetChildren() do
+		if Child:IsA("Frame") then
+			return Child
+		end
+	end
+
+	return nil
+end
 
 function UIFuncs.ApplySettings()
 	UIFuncs.NotificationTweenSpeed = Settings.Options.NotificationTweenSpeed or 0.2
@@ -973,7 +999,18 @@ end
 function UIFuncs.SendNotification(Title, Description, Duration)
 	spawn(
 		function()
-			local ClonedNotif = UIFuncs.NotificationHandler.Notification:Clone()
+			local NotificationTemplate = UIFuncs.GetNotificationTemplate()
+			if not NotificationTemplate then
+				warn("Mada Admin: notification template not found")
+				return
+			end
+
+			local ClonedNotif = NotificationTemplate:Clone()
+			local TitleLabel = ClonedNotif:FindFirstChild("Title")
+			local DescriptionLabel = ClonedNotif:FindFirstChild("Description")
+			local Outline = ClonedNotif:FindFirstChild("Outline")
+			local TimerFrame = ClonedNotif:FindFirstChild("Timer")
+			local TimerBar = TimerFrame and TimerFrame:FindFirstChild("Timer")
 			ClonedNotif.Parent = UIFuncs.NotificationHandler
 			local OriginalPosition = ClonedNotif.Position
 			local OriginalAnchorPoint = ClonedNotif.AnchorPoint
@@ -981,18 +1018,38 @@ function UIFuncs.SendNotification(Title, Description, Duration)
 			ClonedNotif.Position = OriginalPosition
 			ClonedNotif.AnchorPoint = OriginalAnchorPoint
 			ClonedNotif.BackgroundTransparency = 1
-			ClonedNotif.Description.TextTransparency = 1
-			ClonedNotif.Title.TextTransparency = 1
-			ClonedNotif.Outline.Transparency = 1
-			ClonedNotif.Timer.Timer.Transparency = 0.25
+			if DescriptionLabel then
+				DescriptionLabel.TextTransparency = 1
+			end
+			if TitleLabel then
+				TitleLabel.TextTransparency = 1
+			end
+			if Outline then
+				Outline.Transparency = 1
+			end
+			if TimerBar then
+				TimerBar.Transparency = 0.25
+			end
 			ClonedNotif.Visible = true
-			ClonedNotif.Description.Text = Description
-			ClonedNotif.Title.Text = Title
-			ClonedNotif.Timer.Timer.Size = UDim2.new(0, 204, 0, 2)
+			if DescriptionLabel then
+				DescriptionLabel.Text = Description
+			end
+			if TitleLabel then
+				TitleLabel.Text = Title
+			end
+			if TimerBar then
+				TimerBar.Size = UDim2.new(0, 204, 0, 2)
+			end
 			UIFuncs.Tween(ClonedNotif, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
-			UIFuncs.Tween(ClonedNotif.Outline, UIFuncs.SmoothStyles.Fade, {Transparency = 0})
-			UIFuncs.Tween(ClonedNotif.Title, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
-			UIFuncs.Tween(ClonedNotif.Description, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
+			if Outline then
+				UIFuncs.Tween(Outline, UIFuncs.SmoothStyles.Fade, {Transparency = 0})
+			end
+			if TitleLabel then
+				UIFuncs.Tween(TitleLabel, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
+			end
+			if DescriptionLabel then
+				UIFuncs.Tween(DescriptionLabel, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
+			end
 			UIFuncs.Tween(
 				ClonedNotif,
 				TweenInfo.new(
@@ -1002,15 +1059,23 @@ function UIFuncs.SendNotification(Title, Description, Duration)
 				),
 				{Size = UIFuncs.OriginalNotificationSize}
 			)
-			UIFuncs.Tween(
-				ClonedNotif.Timer.Timer,
-				TweenInfo.new(Duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-				{Size = UDim2.new(0, 1, 0, 2)}
-			)
+			if TimerBar then
+				UIFuncs.Tween(
+					TimerBar,
+					TweenInfo.new(Duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+					{Size = UDim2.new(0, 1, 0, 2)}
+				)
+			end
 			task.wait(Duration)
-			UIFuncs.Tween(ClonedNotif.Outline, UIFuncs.SmoothStyles.FadeFast, {Transparency = 1})
-			UIFuncs.Tween(ClonedNotif.Title, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
-			UIFuncs.Tween(ClonedNotif.Description, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
+			if Outline then
+				UIFuncs.Tween(Outline, UIFuncs.SmoothStyles.FadeFast, {Transparency = 1})
+			end
+			if TitleLabel then
+				UIFuncs.Tween(TitleLabel, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
+			end
+			if DescriptionLabel then
+				UIFuncs.Tween(DescriptionLabel, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
+			end
 			UIFuncs.Tween(ClonedNotif, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
 			UIFuncs.Tween(
 				ClonedNotif,
@@ -1160,7 +1225,10 @@ function UIFuncs.LoadTheme()
 		end
 	end
 
-	Interface.Notification.Notification.BackgroundColor3 = Theme.PrimaryBGColor
+	local NotificationTemplate = UIFuncs.GetNotificationTemplate()
+	if NotificationTemplate then
+		NotificationTemplate.BackgroundColor3 = Theme.PrimaryBGColor
+	end
 	Interface.Commands.Tabs.CommandInfoExample.Arguments.BackgroundColor3 = Theme.TopbarColor
 	Button.BackgroundColor3 = Theme.PrimaryBGColor
 end
@@ -5352,26 +5420,52 @@ Command.Add(
 )
 
 Command.Add(
-	{"Exit", "Close", "Quit"},
-	{"Exit / Close / Quit", "Closes Mada Admin completely"},
+	{"Unload", "Close", "ScriptExit", "MadaExit"},
+	{"Unload / Close / ScriptExit / MadaExit", "Closes Mada Admin completely"},
 	{"None"},
 	function()
+		pcall(function()
+			UIFuncs.SendNotification("Mada Admin", "Closing Mada Admin...", 1.5)
+		end)
+		task.wait(0.05)
+
 		if getgenv then
 			getgenv().MadaLoaded = false
+			getgenv().MadaInterfacePath = nil
+			getgenv().ShadowPath = nil
 		end
 
 		pcall(function()
-			Interface.Parent = nil
+			Interface:Destroy()
 		end)
 		pcall(function()
-			Shadow.Parent = nil
+			Shadow:Destroy()
 		end)
 		pcall(function()
-			SG.Parent = nil
+			SG:Destroy()
 		end)
 		pcall(function()
-			Button.Parent = nil
+			Button:Destroy()
 		end)
+		pcall(function()
+			for _, GuiObject in next, Services.CoreGui:GetChildren() do
+				if GuiObject:IsA("ScreenGui") and GuiObject ~= Services.LocalPlayer:FindFirstChild("PlayerGui") then
+					local NameLower = tostring(GuiObject.Name):lower()
+					if NameLower:find("mada", 1, true) or NameLower:find("shadow", 1, true) then
+						GuiObject:Destroy()
+					end
+				end
+			end
+		end)
+	end
+)
+
+Command.Add(
+	{"Exit", "Quit", "Leave"},
+	{"Exit / Quit / Leave", "Leaves the current game"},
+	{"None"},
+	function()
+		Services.LocalPlayer:Kick("Exited game")
 	end
 )
 
@@ -5675,10 +5769,15 @@ local Resizing = {
 GUI = {}
 
 GUI.Top = function(Method)
+	local TopFrame = Interface and Interface:FindFirstChild("Top")
+	if not TopFrame then
+		return
+	end
+
 	if Method == "Open" or Method == "open" then
-		UIFuncs.Open(Interface.Top, 287, 39, UIFuncs.FrameSpeed)
+		UIFuncs.Open(TopFrame, 287, 39, UIFuncs.FrameSpeed)
 	else
-		UIFuncs.Close(Interface.Top, UIFuncs.CloseSpeed)
+		UIFuncs.Close(TopFrame, UIFuncs.CloseSpeed)
 	end
 end
 
