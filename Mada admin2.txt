@@ -8,31 +8,38 @@ local Settings = {
 	Version = "1.0",
 	Themes = {
 		--// Gui
-		PrimaryBGColor = Color3.fromRGB(33, 34, 44), -- // default : 25,25,25
-		TopbarColor = Color3.fromRGB(34, 35, 45), -- // default : 26,26,26
-		PrimaryTextColor = Color3.fromRGB(255, 255, 255), -- // default : 255,255,255
-		SecondaryTextColor = Color3.fromRGB(200, 200, 200), -- // default : 200,200,200
-		ImageColor = Color3.fromRGB(255, 255, 255), -- // default : 255,255,255
-		OutlineColor = Color3.fromRGB(0, 0, 0), -- // border of the uis (basically acts as a shadow) : default : 0, 0, 0
-		OutlineColor2 = Color3.fromRGB(39, 41, 52), -- // outline of stuff in uis (buttons, frames, etc.) : default : 45, 45, 45
+		PrimaryBGColor = Color3.fromRGB(17, 24, 39),
+		TopbarColor = Color3.fromRGB(26, 35, 56),
+		PrimaryTextColor = Color3.fromRGB(248, 250, 252),
+		SecondaryTextColor = Color3.fromRGB(191, 219, 254),
+		ImageColor = Color3.fromRGB(255, 255, 255),
+		OutlineColor = Color3.fromRGB(7, 10, 18),
+		OutlineColor2 = Color3.fromRGB(74, 144, 226),
+		AccentColor = Color3.fromRGB(56, 189, 248),
+		AccentColorDark = Color3.fromRGB(14, 116, 144),
+		OverlayColor = Color3.fromRGB(8, 12, 22),
 		--// CmdBar
-		CommandLinesColor = Color3.fromRGB(33, 34, 44),
-		CommandCenterBarColor = Color3.fromRGB(33, 34, 44),
-		EdgeColor = Color3.fromRGB(33, 34, 44),
-		AutofillColor = Color3.fromRGB(33, 34, 44),
-		AutofillTextColor = Color3.fromRGB(255, 255, 255),
-		InputTextColor = Color3.fromRGB(255, 255, 255)
+		CommandLinesColor = Color3.fromRGB(35, 48, 74),
+		CommandCenterBarColor = Color3.fromRGB(22, 32, 51),
+		EdgeColor = Color3.fromRGB(15, 23, 42),
+		AutofillColor = Color3.fromRGB(24, 35, 58),
+		AutofillTextColor = Color3.fromRGB(224, 242, 254),
+		InputTextColor = Color3.fromRGB(248, 250, 252)
 	},
 	KeyBinds = {},
 	Waypoints = {},
-	Options = {},
+	Options = {
+		NotificationTweenSpeed = 0.2,
+		OpenSpeed = 0.5,
+		CloseSpeed = 0.3
+	},
 	Admins = {}
 }
 
 --// if re-executed it will just remove the old ui
 if getgenv then
-	if getgenv().NamelessLoaded then
-		getgenv().NamelessInterfacePath.Parent = nil
+	if getgenv().MadaLoaded then
+		getgenv().MadaInterfacePath.Parent = nil
 		getgenv().ShadowPath.Parent = nil
 	end
 end
@@ -135,7 +142,7 @@ Interface.Top.PlayerIcon.Image =
 		Enum.ThumbnailSize.Size420x420
 	)
 
-local NFuncs = {} --// NamelessFunctions
+local NFuncs = {} --// MadaFunctions
 local PlayerFuncs = {}
 local UIFuncs = {
 	--// Popup
@@ -156,6 +163,10 @@ local UIFuncs = {
 		EasingDirection = Enum.EasingDirection.Out
 	}
 }
+
+UIFuncs.NotificationTweenSpeed = Settings.Options.NotificationTweenSpeed
+UIFuncs.FrameSpeed = Settings.Options.OpenSpeed
+UIFuncs.CloseSpeed = Settings.Options.CloseSpeed
 
 function NFuncs.CheckIfNPC(Character)
 	if
@@ -833,21 +844,35 @@ local Button =
 			Name = NFuncs.RandomString(),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.new(0.499, 0, 0.08, 0),
-			Size = UDim2.new(0, 33, 0, 33),
+			Size = UDim2.new(0, 40, 0, 40),
 			BackgroundColor3 = Settings.Themes.PrimaryBGColor,
-			Text = "Ma",
-			TextSize = 16,
+			Text = "MA",
+			TextSize = 14,
 			Font = Enum.Font.GothamBold,
-			TextColor3 = Settings.Themes.SecondaryTextColor
+			TextColor3 = Settings.Themes.PrimaryTextColor,
+			AutoButtonColor = false
 		}
 	)
 
 UIFuncs.CreateInstance(
 	"UIStroke",
 	{
-		Thickness = 1,
-		Transparency = 0.8,
+		Thickness = 1.6,
+		Color = Settings.Themes.AccentColor,
+		Transparency = 0.18,
 		ApplyStrokeMode = "Border",
+		Parent = Button
+	}
+)
+
+UIFuncs.CreateInstance(
+	"UIGradient",
+	{
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Settings.Themes.AccentColor),
+			ColorSequenceKeypoint.new(1, Settings.Themes.AccentColorDark)
+		}),
+		Rotation = 135,
 		Parent = Button
 	}
 )
@@ -920,6 +945,98 @@ function UIFuncs.LoadTheme()
 	Button.BackgroundColor3 = Theme.PrimaryBGColor
 end
 
+function UIFuncs.ApplyModernStyling()
+	local Theme = Settings.Themes
+
+	local function EnsureCorner(Object, Radius)
+		if not Object:FindFirstChild("MadaCorner") then
+			UIFuncs.CreateInstance(
+				"UICorner",
+				{
+					Name = "MadaCorner",
+					CornerRadius = Radius or UDim.new(0, 12),
+					Parent = Object
+				}
+			)
+		end
+	end
+
+	local function EnsureStroke(Object, Thickness, Transparency, Color)
+		local Stroke = Object:FindFirstChild("MadaStroke")
+		if not Stroke then
+			Stroke =
+				UIFuncs.CreateInstance(
+					"UIStroke",
+					{
+						Name = "MadaStroke",
+						ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+						Parent = Object
+					}
+				)
+		end
+
+		Stroke.Thickness = Thickness or 1
+		Stroke.Transparency = Transparency or 0.35
+		Stroke.Color = Color or Theme.OutlineColor2
+	end
+
+	local function EnsureGradient(Object, Name, ColorA, ColorB, Rotation)
+		local Gradient = Object:FindFirstChild(Name)
+		if not Gradient then
+			Gradient =
+				UIFuncs.CreateInstance(
+					"UIGradient",
+					{
+						Name = Name,
+						Parent = Object
+					}
+				)
+		end
+
+		Gradient.Color =
+			ColorSequence.new({
+				ColorSequenceKeypoint.new(0, ColorA),
+				ColorSequenceKeypoint.new(1, ColorB)
+			})
+		Gradient.Rotation = Rotation or 90
+	end
+
+	for _, Panel in next, {Interface.Commands, Interface.Options, Interface.Logs, Interface.Servers, Interface.Introduction} do
+		if Panel then
+			EnsureCorner(Panel, UDim.new(0, 16))
+			EnsureStroke(Panel, 1.2, 0.2, Theme.AccentColor)
+			EnsureGradient(Panel, "MadaPanelGradient", Theme.PrimaryBGColor, Theme.TopbarColor, 125)
+		end
+	end
+
+	for _, Topbar in next, {
+		Interface.Commands:FindFirstChild("Topbar"),
+		Interface.Options:FindFirstChild("Topbar"),
+		Interface.Logs:FindFirstChild("Topbar"),
+		Interface.Servers:FindFirstChild("Topbar"),
+		Interface.Introduction:FindFirstChild("Topbar")
+	} do
+		if Topbar then
+			EnsureGradient(Topbar, "MadaTopbarGradient", Theme.AccentColorDark, Theme.AccentColor, 0)
+			EnsureStroke(Topbar, 1, 0.45, Theme.AccentColor)
+		end
+	end
+
+	for _, Clickable in next, Interface:GetDescendants() do
+		if Clickable:IsA("TextButton") then
+			EnsureCorner(Clickable, UDim.new(0, 10))
+			if Clickable ~= Button then
+				EnsureStroke(Clickable, 1, 0.45, Theme.OutlineColor2)
+			end
+		elseif Clickable:IsA("TextBox") then
+			EnsureCorner(Clickable, UDim.new(0, 10))
+			EnsureStroke(Clickable, 1, 0.5, Theme.OutlineColor2)
+		elseif Clickable:IsA("ScrollingFrame") then
+			EnsureCorner(Clickable, UDim.new(0, 12))
+		end
+	end
+end
+
 --// insert shadow frame
 
 local SG =
@@ -941,7 +1058,7 @@ local Shadow =
 			Size = UDim2.new(2, 0, 2, 0),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.new(0.5, 0, 0.5, 0),
-			BackgroundColor3 = Color3.fromRGB(),
+			BackgroundColor3 = Settings.Themes.OverlayColor,
 			BackgroundTransparency = 1
 		}
 	)
@@ -968,7 +1085,11 @@ function UIFuncs.ClosePopup(ObjectClone)
 				ObjectClone.Description.TextTransparency = ObjectClone.Description.TextTransparency + 0.3
 				ObjectClone.Title.TextTransparency = ObjectClone.Title.TextTransparency + 0.3
 				ObjectClone.Bottom.Transparency = ObjectClone.Bottom.Transparency + 0.05
-				ObjectClone.Bottom.UIStroke.Transparency = ObjectClone.Bottom.UIStroke.Transparency + 0.03
+				for _, Stroke in next, ObjectClone.Bottom:GetDescendants() do
+					if Stroke:IsA("UIStroke") then
+						Stroke.Transparency = math.clamp(Stroke.Transparency + 0.05, 0, 1)
+					end
+				end
 
 				spawn(
 					function()
@@ -977,13 +1098,22 @@ function UIFuncs.ClosePopup(ObjectClone)
 								task.wait()
 								v.BackgroundTransparency = v.BackgroundTransparency + 0.08
 								v.TextTransparency = v.TextTransparency + 0.08
-								v.UIStroke.Enabled = false
+								for _, Stroke in next, v:GetChildren() do
+									if Stroke:IsA("UIStroke") then
+										Stroke.Transparency = 1
+										Stroke.Enabled = false
+									end
+								end
 							end
 						end
 					end
 				)
 
-				ObjectClone.Bottom.UIStroke.Enabled = false
+				for _, Stroke in next, ObjectClone.Bottom:GetDescendants() do
+					if Stroke:IsA("UIStroke") then
+						Stroke.Enabled = false
+					end
+				end
 				ObjectClone.Outline.Enabled = false
 			end
 		end
@@ -1053,7 +1183,12 @@ function UIFuncs.PopupTrigger(Title, Description, Callback)
 										v.TextTransparency = v.TextTransparency - 0.05
 									end
 								)
-								v.UIStroke.Transparency = v.UIStroke.Transparency - 0.035
+								for _, Stroke in next, v:GetChildren() do
+									if Stroke:IsA("UIStroke") then
+										Stroke.Enabled = true
+										Stroke.Transparency = math.clamp(Stroke.Transparency - 0.035, 0, 1)
+									end
+								end
 							end
 						end
 					)
@@ -1080,71 +1215,8 @@ function UIFuncs.PopupTrigger(Title, Description, Callback)
 	)
 end
 
-spawn(
-	function()
-		--// start up
-		local TweenSpeed = 0.05
-		local Start = Interface.Start
-		local Status = Start.Status
-		local Filler = Status.Filler
-		local Title = Start.Title
-		local Description = Start.Description
-		local Popup = UIFuncs
-
-		Status.UIStroke.Transparency = 1
-		for i, v in next, Start:GetChildren() do
-			if v:IsA("TextLabel") then
-				v.TextTransparency = 1
-			elseif v:IsA("CanvasGroup") then
-				v.GroupTransparency = 1
-			else
-				if v:IsA("UIStroke") then
-					v.Transparency = 1
-				end
-			end
-		end
-
-		Start.Visible = true
-		Start.Size = UDim2.fromOffset(200, 50)
-		Popup.Open(Start, 331, 61, 0.5)
-
-		wait(0.2)
-		spawn(
-			function()
-				for i, v in next, Start:GetChildren() do
-					spawn(
-						function()
-							if v:IsA("TextLabel") then
-								for i = 1, 20 do
-									task.wait()
-									v.TextTransparency = v.TextTransparency - 0.05
-								end
-							elseif v:IsA("CanvasGroup") then
-								for i = 1, 20 do
-									task.wait()
-									v.GroupTransparency = v.GroupTransparency - 0.05
-								end
-							else
-								if v:IsA("UIStroke") then
-									for i = 1, 20 do
-										task.wait()
-										v.Transparency = v.Transparency - 0.01
-									end
-								end
-							end
-						end
-					)
-				end
-			end
-		)
-
-		Description.Text = ""
-
-		wait(0.1)
-		Status.UIStroke.Transparency = 0
-		UIFuncs.TypeWriter(Description, "Loading...")
-	end
-)
+Interface.Start.Visible = false
+Interface.Start:Destroy()
 
 local CommandAmount = 0
 local Command = {}
@@ -4757,22 +4829,24 @@ Command.Add(
 
 Command.Add(
 	{"Options", "Settings", "Set", "Opt"},
-	{"Settings / Options / Set / Opt", "Opens the Options tab, allows you to change things about Mada"},
-	{"None"},
-	function()
+	{
+		"Settings / Options / Set / Opt",
+		"Manage Mada settings. Use without arguments to open the settings tab, or use parameters like prefix, separator, notifspeed, openspeed, closespeed"
+	},
+	{"Action/Setting", "Value"},
+	function(Action, Value)
 		local Popup = UIFuncs
 		local Options = Interface.Options
-		Options.Visible = false
-
-		for i, v in next, Options:GetChildren() do
-			if v:IsA("Frame") and v.Name == not "ColorPicker" then
-				v.BackgroundTransparency = 1
-			elseif v:IsA("CanvasGroup") then
-				v.GroupTransparency = 1
-			end
-		end
-
 		local function OpenOptions()
+			Options.Visible = false
+			for i, v in next, Options:GetChildren() do
+				if v:IsA("Frame") and v.Name == not "ColorPicker" then
+					v.BackgroundTransparency = 1
+				elseif v:IsA("CanvasGroup") then
+					v.GroupTransparency = 1
+				end
+			end
+
 			Options.BackgroundTransparency = 1
 			Options.Topbar.Visible = false
 			Options.Tabs.Visible = false
@@ -4783,7 +4857,7 @@ Command.Add(
 
 			Options.Size = UDim2.fromOffset(200, 200)
 			Options.Visible = true
-			Popup.Open(Options, 337, 324, 0.5)
+			Popup.Open(Options, 337, 324, Settings.Options.OpenSpeed)
 
 			spawn(
 				function()
@@ -4803,7 +4877,7 @@ Command.Add(
 		end
 
 		local function CloseOptions()
-			Popup.Close(Options, 0.4)
+			Popup.Close(Options, Settings.Options.CloseSpeed)
 
 			spawn(
 				function()
@@ -4825,18 +4899,101 @@ Command.Add(
 			Options.Visible = false
 		end
 
-		Options.PopupBG.Popup.GroupTransparency = 1
-		OpenOptions()
+		if not Action or Action == "" or Action:lower() == "open" or Action:lower() == "ui" then
+			Options.PopupBG.Popup.GroupTransparency = 1
+			OpenOptions()
 
-		Options.Topbar.Close.MouseButton1Click:Connect(
-			function()
-				CloseOptions()
+			Options.Topbar.Close.MouseButton1Click:Connect(
+				function()
+					CloseOptions()
+				end
+			)
+			return
+		end
+
+		Action = Action:lower()
+
+		if Action == "prefix" then
+			if not Value or Value == "" then
+				UIFuncs.SendNotification("Mada Admin", "Current prefix: <b>" .. Settings.Prefix .. "</b>", 5)
+				return
 			end
+			Settings.Prefix = Value
+			UIFuncs.SendNotification("Mada Admin", "Prefix changed to <b>" .. Value .. "</b>", 5)
+			return
+		elseif Action == "separator" or Action == "playerseparator" then
+			if not Value or Value == "" then
+				UIFuncs.SendNotification(
+					"Mada Admin",
+					"Current player separator: <b>" .. Settings.GetPlayerSeperator .. "</b>",
+					5
+				)
+				return
+			end
+			Settings.GetPlayerSeperator = Value
+			UIFuncs.SendNotification("Mada Admin", "Player separator changed to <b>" .. Value .. "</b>", 5)
+			return
+		elseif Action == "notifspeed" then
+			local NewSpeed = tonumber(Value)
+			if not NewSpeed then
+				UIFuncs.SendNotification(
+					"Mada Admin",
+					"Usage: <b>" .. Settings.Prefix .. "settings notifspeed 0.2</b>",
+					5
+				)
+				return
+			end
+			Settings.Options.NotificationTweenSpeed = NewSpeed
+			UIFuncs.NotificationTweenSpeed = NewSpeed
+			UIFuncs.SendNotification("Mada Admin", "Notification speed set to <b>" .. tostring(NewSpeed) .. "</b>", 5)
+			return
+		elseif Action == "openspeed" then
+			local NewSpeed = tonumber(Value)
+			if not NewSpeed then
+				UIFuncs.SendNotification(
+					"Mada Admin",
+					"Usage: <b>" .. Settings.Prefix .. "settings openspeed 0.5</b>",
+					5
+				)
+				return
+			end
+			Settings.Options.OpenSpeed = NewSpeed
+			UIFuncs.FrameSpeed = NewSpeed
+			UIFuncs.SendNotification("Mada Admin", "Open speed set to <b>" .. tostring(NewSpeed) .. "</b>", 5)
+			return
+		elseif Action == "closespeed" then
+			local NewSpeed = tonumber(Value)
+			if not NewSpeed then
+				UIFuncs.SendNotification(
+					"Mada Admin",
+					"Usage: <b>" .. Settings.Prefix .. "settings closespeed 0.3</b>",
+					5
+				)
+				return
+			end
+			Settings.Options.CloseSpeed = NewSpeed
+			UIFuncs.CloseSpeed = NewSpeed
+			UIFuncs.SendNotification("Mada Admin", "Close speed set to <b>" .. tostring(NewSpeed) .. "</b>", 5)
+			return
+		elseif Action == "list" or Action == "help" then
+			UIFuncs.SendNotification(
+				"Mada Admin",
+				"Settings: <b>open</b>, <b>prefix</b>, <b>separator</b>, <b>notifspeed</b>, <b>openspeed</b>, <b>closespeed</b>",
+				8
+			)
+			return
+		end
+
+		UIFuncs.SendNotification(
+			"Mada Admin",
+			"Unknown setting. Try <b>" .. Settings.Prefix .. "settings help</b>",
+			5
 		)
 	end
 )
 
 UIFuncs.LoadTheme()
+UIFuncs.ApplyModernStyling()
 
 if Methods.CheckIfVulnerable() then
 	local BansList = {} -- ban command
@@ -5116,6 +5273,9 @@ local CommandAutoFill = CommandBar.Autofill
 local CommandExample = CommandAutoFill.Cmd
 local LeftFill = CommandBar.LeftFill
 local RightFill = CommandBar.RightFill
+CenterBar.Visible = false
+LeftFill.Visible = false
+RightFill.Visible = false
 local ResizeFrame = Interface.Resizeable
 local Cmds = Interface.Commands
 local CommandsTabs = Cmds.Tabs
@@ -5227,6 +5387,8 @@ for _, AutoFill in next, CommandAutoFill:GetChildren() do
 end
 
 GUI.BarSelect = function(Speed)
+	LeftFill.Visible = true
+	RightFill.Visible = true
 	CenterBar.Visible = true
 	GUI.Tween(CenterBar, "Sine", "Out", Speed or 0.25, {Size = UDim2.new(0, 250, 1, 15)})
 	GUI.Tween(LeftFill, "Quad", "Out", Speed or 0.3, {Position = UDim2.new(0, 0, 0.5, 0)})
@@ -5234,9 +5396,16 @@ GUI.BarSelect = function(Speed)
 end
 
 GUI.BarDeselect = function(Speed)
+	local CloseSpeed = Speed or 0.3
 	GUI.Tween(CenterBar, "Sine", "Out", Speed or 0.25, {Size = UDim2.new(0, 250, 0, 0)})
-	GUI.Tween(LeftFill, "Sine", "In", Speed or 0.3, {Position = UDim2.new(-0.5, 100, 0.5, 0)})
-	GUI.Tween(RightFill, "Sine", "In", Speed or 0.3, {Position = UDim2.new(1.5, -100, 0.5, 0)})
+	GUI.Tween(LeftFill, "Sine", "In", CloseSpeed, {Position = UDim2.new(-0.5, 100, 0.5, 0)})
+	GUI.Tween(RightFill, "Sine", "In", CloseSpeed, {Position = UDim2.new(1.5, -100, 0.5, 0)})
+	task.spawn(function()
+		task.wait(CloseSpeed + 0.05)
+		CenterBar.Visible = false
+		LeftFill.Visible = false
+		RightFill.Visible = false
+	end)
 	for i, v in next, CommandAutoFill:GetChildren() do
 		if v:IsA("Frame") then
 			task.spawn(
@@ -5318,63 +5487,9 @@ if gethiddenproperty then
 	end
 end
 
-Interface.Start.Status.Filler:TweenSize(UDim2.new(1, 0, 0, 21), "Out", "Linear", 0.2, false)
-UIFuncs.TypeWriter(Interface.Start.Description, "Finished!")
-spawn(
-	function()
-		wait(0.5)
-		for i, v in next, Interface.Start:GetChildren() do
-			spawn(
-				function()
-					if v:IsA("TextLabel") then
-						v:Destroy()
-					elseif v:IsA("CanvasGroup") then
-						v:Destroy()
-					else
-						if v:IsA("UIStroke") then
-							v:Destroy()
-						end
-					end
-				end
-			)
-		end
-	end
-)
-
-wait(0.5)
-UIFuncs.Close(Interface.Start, 0.4)
-Interface.Start.Status.Visible = false
-wait(0.4)
-Interface.Start:Destroy()
-
-UIFuncs.PopupTrigger(
-	"Mada Admin",
-	"Seems like you are new here, would you like a tutorial on how to use Mada?",
-	function()
-		wait(0.3)
-		UIFuncs.Open(Interface.Introduction, 317, 283, 0.6)
-		Interface.Introduction.Description.TextTransparency = 1
-		Interface.Introduction.Title.TextTransparency = 1
-		Interface.Introduction.Okay.Visible = false
-		wait(0.4)
-		Interface.Introduction.Description.TextTransparency = 0
-		Interface.Introduction.Title.TextTransparency = 0
-		Interface.Introduction.Okay.Visible = true
-
-		Interface.Introduction.Okay.MouseButton1Click:Connect(
-			function()
-				UIFuncs.Close(Interface.Introduction, 0.3, 0, 0)
-				Interface.Introduction.Description.TextTransparency = 1
-				Interface.Introduction.Title.TextTransparency = 1
-				Interface.Introduction.Okay.Visible = false
-			end
-		)
-	end
-)
-
 if getgenv then
-	getgenv().NamelessLoaded = true
-	getgenv().NamelessInterfacePath = Interface
+	getgenv().MadaLoaded = true
+	getgenv().MadaInterfacePath = Interface
 	getgenv().ShadowPath = Shadow
 end
 
