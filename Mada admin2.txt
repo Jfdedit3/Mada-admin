@@ -4236,17 +4236,6 @@ Command.Add(
 )
 
 Command.Add(
-	{"UnanchoredDelete", "UADelete", "UAD"},
-	{
-		"UnanchoredDelete / UaDelete / UAD",
-		"Deletes unanchored parts by voiding them (You need to be closest to the part for it to work)"
-	},
-	{"None"},
-	function()
-	end
-)
-
-Command.Add(
 	{"JumpPower", "JP", "Jump"},
 	{"JumpPower / Jump / JP", "Changes your jump power so you can jump higher"},
 	{"Number"},
@@ -5465,7 +5454,14 @@ Command.Add(
 	{"Exit / Quit / Leave", "Leaves the current game"},
 	{"None"},
 	function()
-		Services.LocalPlayer:Kick("Exited game")
+		local Success =
+			pcall(function()
+				return game:Shutdown()
+			end)
+
+		if not Success then
+			Services.LocalPlayer:Kick("Exited game")
+		end
 	end
 )
 
