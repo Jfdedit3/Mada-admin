@@ -169,11 +169,26 @@ UIFuncs.NotificationTweenSpeed = Settings.Options.NotificationTweenSpeed
 UIFuncs.FrameSpeed = Settings.Options.OpenSpeed
 UIFuncs.CloseSpeed = Settings.Options.CloseSpeed
 UIFuncs.SingleConnections = {}
+UIFuncs.SmoothStyles = {
+	PanelOpen = TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+	PanelClose = TweenInfo.new(0.26, Enum.EasingStyle.Quart, Enum.EasingDirection.In),
+	Fade = TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+	FadeFast = TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+	Slide = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+}
 
 function UIFuncs.ApplySettings()
 	UIFuncs.NotificationTweenSpeed = Settings.Options.NotificationTweenSpeed or 0.2
 	UIFuncs.FrameSpeed = Settings.Options.OpenSpeed or 0.5
 	UIFuncs.CloseSpeed = Settings.Options.CloseSpeed or 0.3
+	UIFuncs.SmoothStyles.PanelOpen =
+		TweenInfo.new(UIFuncs.FrameSpeed, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.PanelClose =
+		TweenInfo.new(UIFuncs.CloseSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+	UIFuncs.SmoothStyles.Fade =
+		TweenInfo.new(math.max(0.12, UIFuncs.NotificationTweenSpeed), Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.FadeFast =
+		TweenInfo.new(math.max(0.1, UIFuncs.NotificationTweenSpeed * 0.75), Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 end
 
 function UIFuncs.BindSingle(Name, Signal, Callback)
@@ -438,14 +453,95 @@ function PlayerFuncs.PromptChangeRigType(RigType)
 end
 
 function PlayerFuncs.Fling(Target)
-	if Services.LocalPlayer.Character and Target.Character then
-		-- wip lazy rn
-		local Character = Services.LocalPlayer.Characater
-		local HRP = Character.HumanoidRootPart
-		local Humanoid = Character.Humanoid
-
-		local TargetCharacter = Target.Character
+	local Character = Services.LocalPlayer.Character
+	if not Character or not Character.Parent then
+		return false
 	end
+
+	local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+	local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+	if not HumanoidRootPart or not Humanoid then
+		return false
+	end
+
+	local Targets = {}
+	if typeof(Target) == "Instance" then
+		table.insert(Targets, Target)
+	elseif type(Target) == "table" then
+		Targets = Target
+	elseif type(Target) == "string" then
+		Targets = PlayerFuncs.GetPlayer(Target)
+	end
+
+	local ValidTargets = {}
+	for _, Candidate in next, Targets do
+		if Candidate and Candidate ~= Services.LocalPlayer then
+			local CandidateCharacter = Candidate.Character
+			local CandidateRoot = CandidateCharacter and CandidateCharacter:FindFirstChild("HumanoidRootPart")
+			local CandidateHumanoid = CandidateCharacter and CandidateCharacter:FindFirstChildOfClass("Humanoid")
+			if CandidateRoot and CandidateHumanoid and CandidateHumanoid.Health > 0 then
+				table.insert(ValidTargets, Candidate)
+			end
+		end
+	end
+
+	if #ValidTargets == 0 then
+		return false
+	end
+
+	local OldCFrame = HumanoidRootPart.CFrame
+	local OldVelocity = HumanoidRootPart.Velocity
+	local OldRotVelocity = HumanoidRootPart.RotVelocity
+
+	local Spinner = Instance.new("BodyAngularVelocity")
+	Spinner.Name = "MadaFling"
+	Spinner.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	Spinner.AngularVelocity = Vector3.new(0, 99999, 0)
+	Spinner.P = 9e9
+	Spinner.Parent = HumanoidRootPart
+
+	for _, Candidate in next, ValidTargets do
+		local CandidateRoot = Candidate.Character and Candidate.Character:FindFirstChild("HumanoidRootPart")
+		if CandidateRoot then
+			local StartTime = tick()
+			repeat
+				task.wait()
+				HumanoidRootPart.CFrame =
+					CandidateRoot.CFrame * CFrame.new(0, 0, 1.5) * CFrame.Angles(0, math.rad(math.random(0, 360)), 0)
+				HumanoidRootPart.Velocity = Vector3.new(0, 999, 0)
+				HumanoidRootPart.RotVelocity = Vector3.new(999, 99999, 999)
+			until not CandidateRoot.Parent or tick() - StartTime > 0.55
+		end
+	end
+
+	task.wait()
+	Spinner:Destroy()
+	HumanoidRootPart.CFrame = OldCFrame
+	HumanoidRootPart.Velocity = OldVelocity
+	HumanoidRootPart.RotVelocity = OldRotVelocity
+	return true
+end
+
+function PlayerFuncs.UnFling()
+	local Character = Services.LocalPlayer.Character
+	if not Character or not Character.Parent then
+		return false
+	end
+
+	local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+	if not HumanoidRootPart then
+		return false
+	end
+
+	for _, Instance in next, HumanoidRootPart:GetChildren() do
+		if Instance.Name == "Spin" or Instance.Name == "MadaFling" then
+			Instance:Destroy()
+		end
+	end
+
+	HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+	HumanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+	return true
 end
 
 function PlayerFuncs.Walkfling(Power)
@@ -605,18 +701,73 @@ function UIFuncs.Destroy(UIObject)
 	end
 end
 
+function UIFuncs.Tween(Object, TweenInformation, Goal)
+	if not Object then
+		return nil
+	end
+
+	local Tween = Services.TweenService:Create(Object, TweenInformation, Goal)
+	Tween:Play()
+	return Tween
+end
+
+function UIFuncs.FadeDescendants(Parent, GoalTransparency, TweenInformation)
+	if not Parent then
+		return
+	end
+
+	for _, Descendant in next, Parent:GetDescendants() do
+		if Descendant:IsA("TextLabel") or Descendant:IsA("TextButton") or Descendant:IsA("TextBox") then
+			UIFuncs.Tween(Descendant, TweenInformation, {TextTransparency = GoalTransparency})
+		elseif Descendant:IsA("ImageLabel") or Descendant:IsA("ImageButton") then
+			UIFuncs.Tween(Descendant, TweenInformation, {ImageTransparency = GoalTransparency})
+		elseif Descendant:IsA("UIStroke") then
+			UIFuncs.Tween(Descendant, TweenInformation, {Transparency = GoalTransparency})
+		elseif Descendant:IsA("Frame") then
+			if Descendant.Name == "Outline" then
+				UIFuncs.Tween(Descendant, TweenInformation, {BackgroundTransparency = GoalTransparency})
+			end
+		end
+	end
+end
+
+function UIFuncs.RefreshInformationBranding()
+	local InfoTab = Interface and Interface.Options and Interface.Options:FindFirstChild("Tabs") and
+		Interface.Options.Tabs:FindFirstChild("Information")
+	if not InfoTab then
+		return
+	end
+
+	for _, Descendant in next, InfoTab:GetDescendants() do
+		if Descendant:IsA("TextLabel") or Descendant:IsA("TextButton") or Descendant:IsA("TextBox") then
+			local CurrentText = Descendant.Text
+			if CurrentText and CurrentText ~= "" then
+				local Updated = CurrentText
+				Updated = Updated:gsub("[Nn]ameless [Aa]dmin", "Mada Admin")
+				Updated = Updated:gsub("[Nn]ameless", "Mada")
+				if Updated ~= CurrentText then
+					Descendant.Text = Updated
+				end
+			end
+		end
+	end
+end
+
 function UIFuncs.Open(Frame, OffsetSizeX, OffsetSizeY, Speed)
 	if Frame then
 		Speed = Speed or UIFuncs.FrameSpeed
 		Frame.Size = UDim2.new(0, 0, 0, 0)
 		Frame.Visible = true
-		local Opening =
-			Services.TweenService:Create(
-				Frame,
-				TweenInfo.new(Speed, UIFuncs.Styles.OpenEasingStyle, UIFuncs.Styles.OpenEasingDirection),
-				{Size = UDim2.fromOffset(OffsetSizeX, OffsetSizeY)}
-			)
-		Opening:Play()
+		Frame.AnchorPoint = Vector2.new(0.5, 0.5)
+		if Frame.Position.X.Scale == 0 and Frame.Position.Y.Scale == 0 then
+			Frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+		end
+		Frame.BackgroundTransparency = math.clamp(Frame.BackgroundTransparency or 0, 0, 1)
+		UIFuncs.Tween(
+			Frame,
+			TweenInfo.new(Speed, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{Size = UDim2.fromOffset(OffsetSizeX, OffsetSizeY)}
+		)
 	end
 end
 
@@ -627,16 +778,14 @@ function UIFuncs.Close(Frame, Speed, OffsetX, OffsetY)
 			OffsetX = 0
 			OffsetY = 0
 		end
-		local Closing =
-			Services.TweenService:Create(
-				Frame,
-				TweenInfo.new(Speed, UIFuncs.Styles.CloseEasingStyle, UIFuncs.Styles.CloseEasingDirection),
-				{Size = UDim2.fromOffset(0, 0)}
-			)
-		Closing:Play()
+		UIFuncs.Tween(
+			Frame,
+			TweenInfo.new(Speed, Enum.EasingStyle.Quart, Enum.EasingDirection.In),
+			{Size = UDim2.fromOffset(0, 0)}
+		)
 		spawn(
 			function()
-				wait(Speed + 0.1)
+				task.wait(Speed + 0.04)
 				Frame.Visible = false
 			end
 		)
@@ -770,7 +919,7 @@ end
 function UIFuncs.AddCommand(Name, Description, Args)
 	local Commands = Interface.Commands
 	local Tabs = Commands.Tabs
-	local TweenSpeed = 0.5
+	local TweenSpeed = 0.34
 	local Back = Commands.Topbar.Back
 	local Cooldown = false
 
@@ -786,20 +935,12 @@ function UIFuncs.AddCommand(Name, Description, Args)
 				Cooldown = true
 				Back.Icon.Image = "rbxassetid://11422143469"
 				Tabs.CommandInfoExample.Visible = true
-				Services.TweenService:Create(
-					Tabs.Commands,
-					TweenInfo.new(TweenSpeed),
-					{Position = UDim2.new(0, -310, 0, 0)}
-				):Play()
-				Services.TweenService:Create(
-					Tabs.CommandInfoExample,
-					TweenInfo.new(TweenSpeed),
-					{Position = UDim2.new(0, 0, 0, 0)}
-				):Play()
+				UIFuncs.Tween(Tabs.Commands, UIFuncs.SmoothStyles.Slide, {Position = UDim2.new(0, -310, 0, 0)})
+				UIFuncs.Tween(Tabs.CommandInfoExample, UIFuncs.SmoothStyles.Slide, {Position = UDim2.new(0, 0, 0, 0)})
 				local Arguments = Tabs.CommandInfoExample.Arguments
 				Arguments.Title.Text = Name
 				Arguments.Description.Text = Args
-				wait(TweenSpeed + 0.1)
+				task.wait(TweenSpeed + 0.04)
 				Tabs.Commands.Visible = false
 				CurrentTab = "CommandInfoExample"
 				Cooldown = false
@@ -814,17 +955,9 @@ function UIFuncs.AddCommand(Name, Description, Args)
 					Cooldown = true
 					Back.Icon.Image = "rbxassetid://11293977875"
 					Tabs.Commands.Visible = true
-					Services.TweenService:Create(
-						Tabs.Commands,
-						TweenInfo.new(TweenSpeed),
-						{Position = UDim2.new(0, 0, 0, 0)}
-					):Play()
-					Services.TweenService:Create(
-						Tabs.CommandInfoExample,
-						TweenInfo.new(TweenSpeed),
-						{Position = UDim2.new(0, 310, 0, 0)}
-					):Play()
-					wait(TweenSpeed + 0.1)
+					UIFuncs.Tween(Tabs.Commands, UIFuncs.SmoothStyles.Slide, {Position = UDim2.new(0, 0, 0, 0)})
+					UIFuncs.Tween(Tabs.CommandInfoExample, UIFuncs.SmoothStyles.Slide, {Position = UDim2.new(0, 310, 0, 0)})
+					task.wait(TweenSpeed + 0.04)
 					Tabs.CommandInfoExample.Visible = false
 					Cooldown = false
 				end
@@ -838,89 +971,57 @@ function UIFuncs.GetCurrentTime()
 end
 
 function UIFuncs.SendNotification(Title, Description, Duration)
-	--// garbage code dont look plz ignore
 	spawn(
 		function()
 			local ClonedNotif = UIFuncs.NotificationHandler.Notification:Clone()
-			ClonedNotif.Description.Visible = false
-			ClonedNotif.Title.Visible = false
 			ClonedNotif.Parent = UIFuncs.NotificationHandler
+			local OriginalPosition = ClonedNotif.Position
+			local OriginalAnchorPoint = ClonedNotif.AnchorPoint
 			ClonedNotif.Size = UDim2.new(0, 0, 0, 0)
-
-			ClonedNotif.Timer.Timer.Transparency = 1
+			ClonedNotif.Position = OriginalPosition
+			ClonedNotif.AnchorPoint = OriginalAnchorPoint
 			ClonedNotif.BackgroundTransparency = 1
 			ClonedNotif.Description.TextTransparency = 1
 			ClonedNotif.Title.TextTransparency = 1
+			ClonedNotif.Outline.Transparency = 1
+			ClonedNotif.Timer.Timer.Transparency = 0.25
 			ClonedNotif.Visible = true
 			ClonedNotif.Description.Text = Description
 			ClonedNotif.Title.Text = Title
 			ClonedNotif.Timer.Timer.Size = UDim2.new(0, 204, 0, 2)
-			Services.TweenService:Create(
-				ClonedNotif,
-				TweenInfo.new(UIFuncs.NotificationTweenSpeed),
-				{BackgroundTransparency = 0}
-			):Play()
-			Services.TweenService:Create(
-				ClonedNotif.Title,
-				TweenInfo.new(UIFuncs.NotificationTweenSpeed),
-				{TextTransparency = 0}
-			):Play()
-			Services.TweenService:Create(
-				ClonedNotif.Description,
-				TweenInfo.new(UIFuncs.NotificationTweenSpeed),
-				{TextTransparency = 0}
-			):Play()
-			Services.TweenService:Create(
+			UIFuncs.Tween(ClonedNotif, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
+			UIFuncs.Tween(ClonedNotif.Outline, UIFuncs.SmoothStyles.Fade, {Transparency = 0})
+			UIFuncs.Tween(ClonedNotif.Title, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
+			UIFuncs.Tween(ClonedNotif.Description, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
+			UIFuncs.Tween(
 				ClonedNotif,
 				TweenInfo.new(
-					UIFuncs.NotificationTweenSpeed,
-					UIFuncs.NotificationStyles.EasingStyle,
-					UIFuncs.NotificationStyles.EasingDirection
+					math.max(0.18, UIFuncs.NotificationTweenSpeed + 0.08),
+					Enum.EasingStyle.Quint,
+					Enum.EasingDirection.Out
 				),
 				{Size = UIFuncs.OriginalNotificationSize}
-			):Play()
-			Services.TweenService:Create(
-				ClonedNotif.Timer.Timer,
-				TweenInfo.new(Duration + 0.1),
-				{Size = UDim2.new(0, 1, 0, 2)}
-			):Play()
-			Services.TweenService:Create(ClonedNotif.Timer.Timer, TweenInfo.new(Duration + 0.1), {Transparency = 0}):Play(
-
 			)
-			spawn(
-				function()
-					wait(UIFuncs.NotificationTweenSpeed - 0.1)
-					ClonedNotif.Description.Visible = true
-					ClonedNotif.Title.Visible = true
-				end
+			UIFuncs.Tween(
+				ClonedNotif.Timer.Timer,
+				TweenInfo.new(Duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+				{Size = UDim2.new(0, 1, 0, 2)}
 			)
 			task.wait(Duration)
-			Services.TweenService:Create(
-				ClonedNotif.Outline,
-				TweenInfo.new(UIFuncs.NotificationTweenSpeed),
-				{Transparency = 1}
-			):Play()
-			Services.TweenService:Create(
+			UIFuncs.Tween(ClonedNotif.Outline, UIFuncs.SmoothStyles.FadeFast, {Transparency = 1})
+			UIFuncs.Tween(ClonedNotif.Title, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
+			UIFuncs.Tween(ClonedNotif.Description, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
+			UIFuncs.Tween(ClonedNotif, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
+			UIFuncs.Tween(
 				ClonedNotif,
-				TweenInfo.new(UIFuncs.NotificationTweenSpeed),
-				{BackgroundTransparency = 1}
-			):Play()
-			Services.TweenService:Create(
-				ClonedNotif,
-				TweenInfo.new(
-					UIFuncs.NotificationTweenSpeed,
-					UIFuncs.NotificationStyles.EasingStyle,
-					UIFuncs.NotificationStyles.EasingDirection
-				),
+				TweenInfo.new(math.max(0.14, UIFuncs.NotificationTweenSpeed), Enum.EasingStyle.Quart, Enum.EasingDirection.In),
 				{Size = UDim2.new(0, 0, 0, 40)}
-			):Play()
-			ClonedNotif.Title:Destroy()
-			ClonedNotif.Description:Destroy()
-			wait(UIFuncs.NotificationTweenSpeed)
+			)
+			task.wait(math.max(0.14, UIFuncs.NotificationTweenSpeed) + 0.02)
 			ClonedNotif:Destroy()
 		end
 	)
-	wait(0.1)
+	task.wait(0.04)
 end
 
 local Popup = Interface.Popup
@@ -1156,6 +1257,10 @@ function UIFuncs.ApplyModernStyling()
 	end
 end
 
+UIFuncs.RefreshInformationBranding()
+
+
+
 --// insert shadow frame
 
 local SG =
@@ -1183,83 +1288,29 @@ local Shadow =
 	)
 
 function UIFuncs.ClosePopup(ObjectClone)
-	spawn(
-		function()
-			for i = 1, 30 do
-				task.wait(0.001)
-				Shadow.BackgroundTransparency = Shadow.BackgroundTransparency + 0.01
-			end
-			Shadow.BackgroundTransparency = 1
-			wait(0.3)
-			Shadow.BackgroundTransparency = 1
-		end
-	)
+	UIFuncs.Tween(Shadow, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundTransparency = 1})
 	UIFuncs.Close(ObjectClone, UIFuncs.CloseSpeed)
-	spawn(
-		function()
-			for i = 1, 20 do
-				task.wait()
-				ObjectClone.BackgroundTransparency = ObjectClone.BackgroundTransparency + 0.09
-				ObjectClone.Outline.Transparency = ObjectClone.Outline.Transparency + 0.02
-				ObjectClone.Description.TextTransparency = ObjectClone.Description.TextTransparency + 0.3
-				ObjectClone.Title.TextTransparency = ObjectClone.Title.TextTransparency + 0.3
-				ObjectClone.Bottom.Transparency = ObjectClone.Bottom.Transparency + 0.05
-				for _, Stroke in next, ObjectClone.Bottom:GetDescendants() do
-					if Stroke:IsA("UIStroke") then
-						Stroke.Transparency = math.clamp(Stroke.Transparency + 0.05, 0, 1)
-					end
-				end
-
-				spawn(
-					function()
-						for i, v in next, ObjectClone.Bottom:GetChildren() do
-							if v:IsA("TextButton") then
-								task.wait()
-								v.BackgroundTransparency = v.BackgroundTransparency + 0.08
-								v.TextTransparency = v.TextTransparency + 0.08
-								for _, Stroke in next, v:GetChildren() do
-									if Stroke:IsA("UIStroke") then
-										Stroke.Transparency = 1
-										Stroke.Enabled = false
-									end
-								end
-							end
-						end
-					end
-				)
-
-				for _, Stroke in next, ObjectClone.Bottom:GetDescendants() do
-					if Stroke:IsA("UIStroke") then
-						Stroke.Enabled = false
-					end
-				end
-				ObjectClone.Outline.Enabled = false
-			end
+	UIFuncs.Tween(ObjectClone, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
+	UIFuncs.Tween(ObjectClone.Outline, UIFuncs.SmoothStyles.FadeFast, {Transparency = 1})
+	UIFuncs.Tween(ObjectClone.Description, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
+	UIFuncs.Tween(ObjectClone.Title, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
+	UIFuncs.Tween(ObjectClone.Bottom, UIFuncs.SmoothStyles.FadeFast, {Transparency = 1})
+	for _, Stroke in next, ObjectClone.Bottom:GetDescendants() do
+		if Stroke:IsA("UIStroke") then
+			UIFuncs.Tween(Stroke, UIFuncs.SmoothStyles.FadeFast, {Transparency = 1})
 		end
-	)
-
-	spawn(
-		function()
-			wait(0.05)
-			ObjectClone.Bottom.Visible = false
-			ObjectClone.Description.Visible = false
-			ObjectClone.Title.Visible = false
+	end
+	for _, v in next, ObjectClone.Bottom:GetChildren() do
+		if v:IsA("TextButton") then
+			UIFuncs.Tween(v, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1, TextTransparency = 1})
 		end
-	)
-	wait(2)
+	end
+	task.wait(math.max(0.22, UIFuncs.CloseSpeed) + 0.08)
 	ObjectClone:Destroy()
 end
 
 function UIFuncs.PopupTrigger(Title, Description, Callback)
-	spawn(
-		function()
-			for i = 1, 30 do
-				task.wait(0.001)
-				Shadow.BackgroundTransparency = Shadow.BackgroundTransparency - 0.01
-			end
-			Shadow.BackgroundTransparency = 0.7
-		end
-	)
+	UIFuncs.Tween(Shadow, TweenInfo.new(0.24, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundTransparency = 0.3})
 
 	Callback = Callback or function()
 	end
@@ -1267,54 +1318,30 @@ function UIFuncs.PopupTrigger(Title, Description, Callback)
 	ObjectClone.Parent = Popup.Parent
 	ObjectClone.Title.Text = Title
 	ObjectClone.Description.Text = Description
-	spawn(
-		function()
-			for i = 1, 20 do
-				task.wait()
-				ObjectClone.BackgroundTransparency = ObjectClone.BackgroundTransparency - 0.05
-				ObjectClone.Outline.Transparency = ObjectClone.Outline.Transparency - 0.01
-				spawn(
-					function()
-						wait(0.3)
-						ObjectClone.Description.TextTransparency = ObjectClone.Description.TextTransparency - 0.05
-						ObjectClone.Title.TextTransparency = ObjectClone.Title.TextTransparency - 0.05
-					end
-				)
-				ObjectClone.Bottom.Transparency = ObjectClone.Bottom.Transparency - 0.05
-				ObjectClone.Bottom.UIStroke.Transparency = ObjectClone.Bottom.UIStroke.Transparency - 0.035
-			end
-		end
-	)
+	ObjectClone.BackgroundTransparency = 1
+	ObjectClone.Outline.Transparency = 1
+	ObjectClone.Description.TextTransparency = 1
+	ObjectClone.Title.TextTransparency = 1
+	ObjectClone.Bottom.Transparency = 1
+	ObjectClone.Bottom.UIStroke.Transparency = 1
 	UIFuncs.Open(ObjectClone, 345, 92, 0.5)
-
-	spawn(
-		function()
-			for i, v in next, ObjectClone.Bottom:GetChildren() do
-				if v:IsA("TextButton") then
-					spawn(
-						function()
-							for i = 1, 20 do
-								task.wait()
-								v.BackgroundTransparency = v.BackgroundTransparency - 0.05
-								spawn(
-									function()
-										wait(0.3)
-										v.TextTransparency = v.TextTransparency - 0.05
-									end
-								)
-								for _, Stroke in next, v:GetChildren() do
-									if Stroke:IsA("UIStroke") then
-										Stroke.Enabled = true
-										Stroke.Transparency = math.clamp(Stroke.Transparency - 0.035, 0, 1)
-									end
-								end
-							end
-						end
-					)
+	UIFuncs.Tween(ObjectClone, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
+	UIFuncs.Tween(ObjectClone.Outline, UIFuncs.SmoothStyles.Fade, {Transparency = 0})
+	UIFuncs.Tween(ObjectClone.Description, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
+	UIFuncs.Tween(ObjectClone.Title, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
+	UIFuncs.Tween(ObjectClone.Bottom, UIFuncs.SmoothStyles.Fade, {Transparency = 0})
+	UIFuncs.Tween(ObjectClone.Bottom.UIStroke, UIFuncs.SmoothStyles.Fade, {Transparency = 0})
+	for i, v in next, ObjectClone.Bottom:GetChildren() do
+		if v:IsA("TextButton") then
+			UIFuncs.Tween(v, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0, TextTransparency = 0})
+			for _, Stroke in next, v:GetChildren() do
+				if Stroke:IsA("UIStroke") then
+					Stroke.Enabled = true
+					UIFuncs.Tween(Stroke, UIFuncs.SmoothStyles.Fade, {Transparency = 0})
 				end
 			end
 		end
-	)
+	end
 
 	ObjectClone.Bottom.Accept.MouseButton1Click:Connect(
 		function()
@@ -1514,6 +1541,68 @@ Library.Disconnect = function(Name)
 	end
 end
 
+function UIFuncs.ResolveOptionsTab(Tabs, ButtonObject)
+	if not Tabs or not ButtonObject then
+		return nil
+	end
+
+	local function Normalize(Text)
+		return tostring(Text or ""):lower():gsub("%s+", ""):gsub("[^%w]", "")
+	end
+
+	local function ExtractButtonLabel(Object)
+		local Candidates = {}
+
+		if Object:IsA("TextButton") or Object:IsA("TextLabel") or Object:IsA("TextBox") then
+			table.insert(Candidates, Object.Text or "")
+		end
+
+		for _, Descendant in next, Object:GetDescendants() do
+			if Descendant:IsA("TextLabel") or Descendant:IsA("TextButton") or Descendant:IsA("TextBox") then
+				if Descendant.Text and Descendant.Text ~= "" then
+					table.insert(Candidates, Descendant.Text)
+				end
+			end
+		end
+
+		for _, Candidate in next, Candidates do
+			local Normalized = Normalize(Candidate)
+			if Normalized ~= "" then
+				return Normalized
+			end
+		end
+
+		return Normalize(ButtonObject.Name)
+	end
+
+	local function FindTabByAliases(Aliases)
+		for _, Child in next, Tabs:GetChildren() do
+			if Child:IsA("ScrollingFrame") and Child.Name ~= "Selection" then
+				local TabName = Normalize(Child.Name)
+				for _, Alias in next, Aliases do
+					if TabName == Alias or TabName:find(Alias, 1, true) then
+						return Child
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	local Label = ExtractButtonLabel(ButtonObject)
+	if Label == "information" or Label == "info" then
+		return FindTabByAliases({"information", "info"})
+	elseif Label == "waypoints" or Label == "waypoint" then
+		return FindTabByAliases({"waypoints", "waypoint"})
+	elseif Label == "plugins" or Label == "plugin" then
+		return FindTabByAliases({"plugins", "plugin"})
+	elseif Label == "updates" or Label == "update" or Label == "versions" or Label == "version" then
+		return FindTabByAliases({"updates", "update", "versions", "version"})
+	end
+
+	return nil
+end
+
 spawn(
 	function()
 		--// ui
@@ -1524,6 +1613,38 @@ spawn(
 		local TweenSpeed = 0.5
 		local CurrentTab = "Selection"
 		local Cooldown = false
+
+		for _, Child in next, Selection:GetChildren() do
+			if Child:IsA("TextButton") then
+				local RemoveButton = false
+				if Child.Name:lower():find("theme", 1, true) then
+					RemoveButton = true
+				else
+					for _, Descendant in next, Child:GetDescendants() do
+						if
+							(Descendant:IsA("TextLabel") or Descendant:IsA("TextButton")) and Descendant.Text and
+								Descendant.Text:lower():find("theme", 1, true)
+						then
+							RemoveButton = true
+							break
+						end
+					end
+				end
+
+				if RemoveButton then
+					Child.Visible = false
+					Child:Destroy()
+				end
+			end
+		end
+
+		for _, Child in next, Tabs:GetChildren() do
+			if Child:IsA("ScrollingFrame") and Child.Name:lower():find("theme", 1, true) then
+				Child.Visible = false
+				Child:Destroy()
+			end
+		end
+
 		for i, v in next, Tabs:GetChildren() do
 			if v:IsA("ScrollingFrame") then
 				if v.Name == "Selection" then
@@ -1537,7 +1658,8 @@ spawn(
 			if v:IsA("TextButton") then
 				v.MouseButton1Click:Connect(
 					function()
-						if not Cooldown and Tabs:FindFirstChild(v.Name) then
+						local TargetTab = UIFuncs.ResolveOptionsTab(Tabs, v)
+						if not Cooldown and TargetTab then
 							Cooldown = true
 							BackButton.Visible = true
 							BackButton.Icon.ImageTransparency = 1
@@ -1550,10 +1672,10 @@ spawn(
 									BackButton.Icon.ImageTransparency = 0
 								end
 							)
-							Tabs[v.Name].Visible = true -- 0, -350,0, 0
-							Tabs[v.Name].Position = UDim2.new(0, 350, 0, 0)
+							TargetTab.Visible = true -- 0, -350,0, 0
+							TargetTab.Position = UDim2.new(0, 350, 0, 0)
 							Services.TweenService:Create(
-								Tabs[v.Name],
+								TargetTab,
 								TweenInfo.new(TweenSpeed),
 								{Position = UDim2.new(0, 0, 0, 0)}
 							):Play()
@@ -1564,9 +1686,15 @@ spawn(
 							):Play()
 							wait(TweenSpeed + 0.1)
 							Tabs[CurrentTab].Visible = false
-							CurrentTab = v.Name
+							CurrentTab = TargetTab.Name
 							wait(1)
 							Cooldown = false
+						elseif not TargetTab then
+							UIFuncs.SendNotification(
+								"Mada Admin",
+								"No submenu was found for <b>" .. tostring(v.Text ~= "" and v.Text or v.Name) .. "</b>",
+								5
+							)
 						end
 					end
 				)
@@ -3789,6 +3917,56 @@ Command.Add(
 )
 
 Command.Add(
+	{"ServerHop", "Shop", "Hop", "SH"},
+	{"ServerHop / Shop / Hop / SH", "Teleports you into a different server for the current game"},
+	{"None"},
+	function()
+		local Success, Response =
+			pcall(
+				function()
+					return game:HttpGet(
+						"https://games.roblox.com/v1/games/" .. tostring(game.PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
+					)
+				end
+			)
+
+		if not Success or not Response then
+			UIFuncs.SendNotification("Mada Admin", "Could not fetch public servers", 5)
+			return
+		end
+
+		local DecodedSuccess, Data =
+			pcall(function()
+				return Services.HttpService:JSONDecode(Response)
+			end)
+
+		if not DecodedSuccess or type(Data) ~= "table" or type(Data.data) ~= "table" then
+			UIFuncs.SendNotification("Mada Admin", "Failed to decode server list", 5)
+			return
+		end
+
+		local Candidates = {}
+		for _, Server in next, Data.data do
+			if
+				type(Server) == "table" and Server.id and Server.id ~= game.JobId and tonumber(Server.playing) and
+					tonumber(Server.maxPlayers) and tonumber(Server.playing) < tonumber(Server.maxPlayers)
+			then
+				table.insert(Candidates, Server)
+			end
+		end
+
+		if #Candidates == 0 then
+			UIFuncs.SendNotification("Mada Admin", "No other server was found right now", 5)
+			return
+		end
+
+		local ChosenServer = Candidates[math.random(1, #Candidates)]
+		UIFuncs.SendNotification("Mada Admin", "Joining another server...", 4)
+		Services.TeleportService:TeleportToPlaceInstance(game.PlaceId, ChosenServer.id, Services.LocalPlayer)
+	end
+)
+
+Command.Add(
 	{"Respawn", "Re"},
 	{"Respawn / Re", "Respawns you and places you back into the place you were"},
 	{"None"},
@@ -4080,6 +4258,66 @@ Command.Add(
 		Spin.AngularVelocity = Vector3.new(0, Number, 0)
 		Spin.Name = "Spin"
 		Spin.Parent = Services.Character.HumanoidRootPart
+	end
+)
+
+Command.Add(
+	{"Fling", "Fl"},
+	{"Fling / Fl", "Without a target it spins you. With a username or all, it flings that player or everyone"},
+	{"Username/All"},
+	function(Target)
+		if not Target or Target == "" then
+			for i, Instance in next, Services.Character:FindFirstChild("HumanoidRootPart"):GetChildren() do
+				if Instance.Name == "Spin" then
+					Instance:Destroy()
+				end
+			end
+
+			local Spin = Instance.new("BodyAngularVelocity")
+			Spin.MaxTorque = Vector3.new(0, 9e9, 0)
+			Spin.AngularVelocity = Vector3.new(0, 35, 0)
+			Spin.Name = "Spin"
+			Spin.Parent = Services.Character.HumanoidRootPart
+			UIFuncs.SendNotification("Mada Admin", "Fling without target spins <b>you</b>", 4)
+			return
+		end
+
+		local Targets = PlayerFuncs.GetPlayer(Target)
+		local FilteredTargets = {}
+		for _, Player in next, Targets do
+			if Player and Player ~= Services.LocalPlayer then
+				table.insert(FilteredTargets, Player)
+			end
+		end
+
+		if #FilteredTargets == 0 then
+			UIFuncs.SendNotification("Mada Admin", "No valid target found for fling", 4)
+			return
+		end
+
+		local Success = PlayerFuncs.Fling(FilteredTargets)
+		if Success then
+			if tostring(Target):lower() == "all" then
+				UIFuncs.SendNotification("Mada Admin", "Attempted to fling <b>all</b>", 4)
+			else
+				UIFuncs.SendNotification("Mada Admin", "Attempted to fling <b>" .. tostring(Target) .. "</b>", 4)
+			end
+		else
+			UIFuncs.SendNotification("Mada Admin", "Fling failed on the selected target(s)", 4)
+		end
+	end
+)
+
+Command.Add(
+	{"UnFling", "UnFl", "StopFling"},
+	{"UnFling / UnFl / StopFling", "Stops your local spin/fling effect"},
+	{"None"},
+	function()
+		if PlayerFuncs.UnFling() then
+			UIFuncs.SendNotification("Mada Admin", "Fling/spin stopped", 4)
+		else
+			UIFuncs.SendNotification("Mada Admin", "Nothing to stop", 4)
+		end
 	end
 )
 
@@ -4971,15 +5209,8 @@ Command.Add(
 			Options.Visible = true
 			Popup.Open(Options, 337, 324, Settings.Options.OpenSpeed)
 
-			spawn(
-				function()
-					for i = 1, 20 do
-						task.wait()
-						Options.BackgroundTransparency = Options.BackgroundTransparency - 0.05
-						Options.Tabs.GroupTransparency = Options.Tabs.GroupTransparency - 0.05
-					end
-				end
-			)
+			UIFuncs.Tween(Options, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
+			UIFuncs.Tween(Options.Tabs, UIFuncs.SmoothStyles.Fade, {GroupTransparency = 0})
 			wait(0.2)
 			Options.Topbar.Visible = true
 			wait(0.1)
@@ -4991,15 +5222,8 @@ Command.Add(
 		local function CloseOptions()
 			Popup.Close(Options, Settings.Options.CloseSpeed)
 
-			spawn(
-				function()
-					for i = 1, 20 do
-						task.wait()
-						Options.BackgroundTransparency = Options.BackgroundTransparency + 0.05
-						Options.Tabs.GroupTransparency = Options.Tabs.GroupTransparency + 0.05
-					end
-				end
-			)
+			UIFuncs.Tween(Options, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
+			UIFuncs.Tween(Options.Tabs, UIFuncs.SmoothStyles.FadeFast, {GroupTransparency = 1})
 			Options.Tabs.Visible = false
 			wait(0.05)
 			Options.Topbar.Close.Visible = false
@@ -5127,8 +5351,29 @@ Command.Add(
 	end
 )
 
-UIFuncs.LoadTheme()
-UIFuncs.ApplyModernStyling()
+Command.Add(
+	{"Exit", "Close", "Quit"},
+	{"Exit / Close / Quit", "Closes Mada Admin completely"},
+	{"None"},
+	function()
+		if getgenv then
+			getgenv().MadaLoaded = false
+		end
+
+		pcall(function()
+			Interface.Parent = nil
+		end)
+		pcall(function()
+			Shadow.Parent = nil
+		end)
+		pcall(function()
+			SG.Parent = nil
+		end)
+		pcall(function()
+			Button.Parent = nil
+		end)
+	end
+)
 
 if Methods.CheckIfVulnerable() then
 	local BansList = {} -- ban command
