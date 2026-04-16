@@ -46,7 +46,7 @@ end
 
 local Checks = {
 	CheckIfFolderFuncs = isfolder and makefolder and delfolder,
-	CheckIfFileFuncs = isfile and writefile and delfile and listfiles and loadfile
+	CheckIfFileFuncs = isfile and readfile and writefile and delfile and listfiles and loadfile
 }
 
 if Checks.CheckIfFolderFuncs then
@@ -70,6 +70,7 @@ end
 local Services = {
 	Players = game:GetService("Players"),
 	CoreGui = game:GetService("CoreGui"),
+	HttpService = game:GetService("HttpService"),
 	UserInputService = game:GetService("UserInputService"),
 	LocalPlayer = game:GetService("Players").LocalPlayer,
 	PlayerGui = game:GetService("Players").LocalPlayer.PlayerGui,
@@ -167,6 +168,74 @@ local UIFuncs = {
 UIFuncs.NotificationTweenSpeed = Settings.Options.NotificationTweenSpeed
 UIFuncs.FrameSpeed = Settings.Options.OpenSpeed
 UIFuncs.CloseSpeed = Settings.Options.CloseSpeed
+UIFuncs.SingleConnections = {}
+
+function UIFuncs.ApplySettings()
+	UIFuncs.NotificationTweenSpeed = Settings.Options.NotificationTweenSpeed or 0.2
+	UIFuncs.FrameSpeed = Settings.Options.OpenSpeed or 0.5
+	UIFuncs.CloseSpeed = Settings.Options.CloseSpeed or 0.3
+end
+
+function UIFuncs.BindSingle(Name, Signal, Callback)
+	if UIFuncs.SingleConnections[Name] then
+		UIFuncs.SingleConnections[Name]:Disconnect()
+	end
+	UIFuncs.SingleConnections[Name] = Signal:Connect(Callback)
+	return UIFuncs.SingleConnections[Name]
+end
+
+function UIFuncs.LoadSavedSettings()
+	if not Checks.CheckIfFileFuncs then
+		return
+	end
+
+	local SettingsPath = "Mada-Admin-V2/settings.json"
+	if not isfile(SettingsPath) then
+		return
+	end
+
+	local success, Decoded =
+		pcall(function()
+			return Services.HttpService:JSONDecode(readfile(SettingsPath))
+		end)
+
+	if success and type(Decoded) == "table" then
+		if type(Decoded.Prefix) == "string" and Decoded.Prefix ~= "" then
+			Settings.Prefix = Decoded.Prefix
+		end
+		if type(Decoded.GetPlayerSeperator) == "string" and Decoded.GetPlayerSeperator ~= "" then
+			Settings.GetPlayerSeperator = Decoded.GetPlayerSeperator
+		end
+		if type(Decoded.Options) == "table" then
+			for Key, Value in next, Decoded.Options do
+				Settings.Options[Key] = Value
+			end
+		end
+	end
+
+	UIFuncs.ApplySettings()
+end
+
+function UIFuncs.SaveSettings()
+	if not Checks.CheckIfFileFuncs then
+		return false
+	end
+
+	local Payload = {
+		Prefix = Settings.Prefix,
+		GetPlayerSeperator = Settings.GetPlayerSeperator,
+		Options = Settings.Options
+	}
+
+	local success =
+		pcall(function()
+			writefile("Mada-Admin-V2/settings.json", Services.HttpService:JSONEncode(Payload))
+		end)
+
+	return success
+end
+
+UIFuncs.LoadSavedSettings()
 
 function NFuncs.CheckIfNPC(Character)
 	if
@@ -186,6 +255,53 @@ function NFuncs.RandomString()
 	end
 	return table.concat(String)
 end
+
+function NFuncs.BuildSearchQuery(...)
+	local Args = {...}
+	local QueryParts = {}
+	for _, Value in next, Args do
+		if Value and tostring(Value) ~= "" then
+			table.insert(QueryParts, tostring(Value))
+		end
+	end
+	return table.concat(QueryParts, " ")
+end
+
+function NFuncs.ParseArgumentsPreservingQuotes(Text)
+	local Args = {}
+	local Current = {}
+	local InQuotes = false
+	local QuoteChar = nil
+
+	for i = 1, #Text do
+		local Character = Text:sub(i, i)
+		if (Character == "\"" or Character == "'") then
+			if InQuotes and Character == QuoteChar then
+				InQuotes = false
+				QuoteChar = nil
+			elseif not InQuotes then
+				InQuotes = true
+				QuoteChar = Character
+			else
+				table.insert(Current, Character)
+			end
+		elseif Character == " " and not InQuotes then
+			if #Current > 0 then
+				table.insert(Args, table.concat(Current))
+				Current = {}
+			end
+		else
+			table.insert(Current, Character)
+		end
+	end
+
+	if #Current > 0 then
+		table.insert(Args, table.concat(Current))
+	end
+
+	return Args
+end
+
 
 --[[function NFuncs.CheckIfMobile()
 	if table.find({Enum.Platform.IOS, Enum.Platform.Android}, Services.UserInputService:GetPlatform()) then 
@@ -238,7 +354,7 @@ function PlayerFuncs.GetPlayer(Arg)
 		elseif String:lower() == "alive" then
 			for i, Player in next, Services.Players:GetPlayers() do
 				if Player.Character and Player.Character.Humanoid then
-					if Player.Character.Humanoid.Health >= 0 then
+					if Player.Character.Humanoid.Health > 0 then
 						table.insert(Target, Player)
 					end
 				end
@@ -491,6 +607,7 @@ end
 
 function UIFuncs.Open(Frame, OffsetSizeX, OffsetSizeY, Speed)
 	if Frame then
+		Speed = Speed or UIFuncs.FrameSpeed
 		Frame.Size = UDim2.new(0, 0, 0, 0)
 		Frame.Visible = true
 		local Opening =
@@ -505,6 +622,7 @@ end
 
 function UIFuncs.Close(Frame, Speed, OffsetX, OffsetY)
 	if Frame then
+		Speed = Speed or UIFuncs.CloseSpeed
 		if not OffsetX and OffsetY then
 			OffsetX = 0
 			OffsetY = 0
@@ -647,6 +765,7 @@ function UIFuncs.CreateInstance(Name, Properties, Children)
 
 	return Object
 end
+
 
 function UIFuncs.AddCommand(Name, Description, Args)
 	local Commands = Interface.Commands
@@ -928,7 +1047,7 @@ function UIFuncs.LoadTheme()
 				Child.Color = Theme.OutlineColor2
 			end
 		elseif Child:IsA("Frame") and Child.Name == "Horizontal" then
-			if Child.Parent.Name == not "CenterBar" then
+			if Child.Parent.Name ~= "CenterBar" then
 				Child.BackgroundColor3 = Theme.CommandLinesColor
 			elseif Child:IsA("Frame") and Child.Parent.Name == "Background" then
 				Child.BackgroundColor3 = Theme.AutofillColor
@@ -1075,7 +1194,7 @@ function UIFuncs.ClosePopup(ObjectClone)
 			Shadow.BackgroundTransparency = 1
 		end
 	)
-	UIFuncs.Close(ObjectClone, 0.4)
+	UIFuncs.Close(ObjectClone, UIFuncs.CloseSpeed)
 	spawn(
 		function()
 			for i = 1, 20 do
@@ -1319,7 +1438,7 @@ Methods.Destroy = function(Part)
 	elseif Services.Character:FindFirstChild("HandlessSegway") then
 		for i, Descendant in next, game:GetDescendants() do
 			if Descendant.Name == "DestroySegway" then
-				Descentdant:FireServer(Part, {Value = Part})
+				Descendant:FireServer(Part, {Value = Part})
 			end
 		end
 	elseif Services.ReplicatedStorage:FindFirstChild("GuiHandler") then
@@ -1373,10 +1492,7 @@ Library.ParseCommand = function(Text)
 		function()
 			local commands = Library.ParseText(Text, Settings.Prefix)
 			for _, parsed in next, commands do
-				local args = {}
-				for arg in parsed:gmatch("[^ ]+") do
-					table.insert(args, arg)
-				end
+				local args = NFuncs.ParseArgumentsPreservingQuotes(parsed)
 				Command.Run(args)
 			end
 		end
@@ -3290,6 +3406,8 @@ Command.Add(
 	{"Prefix"},
 	function(Prefix)
 		Settings.Prefix = Prefix
+		UIFuncs.SaveSettings()
+		UIFuncs.SendNotification("Mada Admin", "Prefix changed to <b>" .. tostring(Prefix) .. "</b>", 5)
 	end
 )
 
@@ -4461,7 +4579,7 @@ Command.Add(
 
 			Logs.Size = UDim2.fromOffset(200, 200)
 			Logs.Visible = true
-			Popup.Open(Logs, 337, 324, 0.5)
+			Popup.Open(Logs, 337, 324, UIFuncs.FrameSpeed)
 
 			spawn(
 				function()
@@ -4481,7 +4599,7 @@ Command.Add(
 		end
 
 		local function CloseLogs()
-			Popup.Close(Logs, 0.4)
+			Popup.Close(Logs, UIFuncs.CloseSpeed)
 
 			spawn(
 				function()
@@ -4506,11 +4624,9 @@ Command.Add(
 		Logs.PopupBG.Popup.GroupTransparency = 1
 		OpenLogs()
 
-		Logs.Topbar.Close.MouseButton1Click:Connect(
-			function()
-				CloseLogs()
-			end
-		)
+		UIFuncs.BindSingle("LogsClose", Logs.Topbar.Close.MouseButton1Click, function()
+			CloseLogs()
+		end)
 	end
 )
 
@@ -4573,7 +4689,7 @@ Command.Add(
 
 			Servers.Size = UDim2.fromOffset(200, 200)
 			Servers.Visible = true
-			Popup.Open(Servers, 337, 324, 0.5)
+			Popup.Open(Servers, 337, 324, UIFuncs.FrameSpeed)
 
 			spawn(
 				function()
@@ -4593,7 +4709,7 @@ Command.Add(
 		end
 
 		local function CloseServers()
-			Popup.Close(Servers, 0.4)
+			Popup.Close(Servers, UIFuncs.CloseSpeed)
 
 			spawn(
 				function()
@@ -4618,11 +4734,9 @@ Command.Add(
 		Servers.PopupBG.Popup.GroupTransparency = 1
 		OpenServers()
 
-		Servers.Topbar.Close.MouseButton1Click:Connect(
-			function()
-				CloseServers()
-			end
-		)
+		UIFuncs.BindSingle("ServersClose", Servers.Topbar.Close.MouseButton1Click, function()
+			CloseServers()
+		end)
 
 		local URL = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?limit=100"
 		local ServerTable = {}
@@ -4677,7 +4791,7 @@ Command.Add(
 
 			Commands.Size = UDim2.fromOffset(200, 200)
 			Commands.Visible = true
-			Popup.Open(Commands, 308, 310, 0.5)
+			Popup.Open(Commands, 308, 310, UIFuncs.FrameSpeed)
 
 			spawn(
 				function()
@@ -4698,7 +4812,7 @@ Command.Add(
 		OpenCommands()
 
 		local function CloseCommands()
-			Popup.Close(Commands, 0.4)
+			Popup.Close(Commands, UIFuncs.CloseSpeed)
 
 			spawn(
 				function()
@@ -4718,11 +4832,9 @@ Command.Add(
 			Commands.Visible = false
 		end
 
-		Topbar.Close.MouseButton1Click:Connect(
-			function()
-				CloseCommands()
-			end
-		)
+		UIFuncs.BindSingle("CommandsClose", Topbar.Close.MouseButton1Click, function()
+			CloseCommands()
+		end)
 
 		Topbar.Search:GetPropertyChangedSignal("Text"):Connect(
 		function()
@@ -4840,7 +4952,7 @@ Command.Add(
 		local function OpenOptions()
 			Options.Visible = false
 			for i, v in next, Options:GetChildren() do
-				if v:IsA("Frame") and v.Name == not "ColorPicker" then
+				if v:IsA("Frame") and v.Name ~= "ColorPicker" then
 					v.BackgroundTransparency = 1
 				elseif v:IsA("CanvasGroup") then
 					v.GroupTransparency = 1
@@ -4903,11 +5015,9 @@ Command.Add(
 			Options.PopupBG.Popup.GroupTransparency = 1
 			OpenOptions()
 
-			Options.Topbar.Close.MouseButton1Click:Connect(
-				function()
-					CloseOptions()
-				end
-			)
+			UIFuncs.BindSingle("OptionsClose", Options.Topbar.Close.MouseButton1Click, function()
+				CloseOptions()
+			end)
 			return
 		end
 
@@ -4919,6 +5029,7 @@ Command.Add(
 				return
 			end
 			Settings.Prefix = Value
+			UIFuncs.SaveSettings()
 			UIFuncs.SendNotification("Mada Admin", "Prefix changed to <b>" .. Value .. "</b>", 5)
 			return
 		elseif Action == "separator" or Action == "playerseparator" then
@@ -4931,6 +5042,7 @@ Command.Add(
 				return
 			end
 			Settings.GetPlayerSeperator = Value
+			UIFuncs.SaveSettings()
 			UIFuncs.SendNotification("Mada Admin", "Player separator changed to <b>" .. Value .. "</b>", 5)
 			return
 		elseif Action == "notifspeed" then
@@ -4944,7 +5056,8 @@ Command.Add(
 				return
 			end
 			Settings.Options.NotificationTweenSpeed = NewSpeed
-			UIFuncs.NotificationTweenSpeed = NewSpeed
+			UIFuncs.ApplySettings()
+			UIFuncs.SaveSettings()
 			UIFuncs.SendNotification("Mada Admin", "Notification speed set to <b>" .. tostring(NewSpeed) .. "</b>", 5)
 			return
 		elseif Action == "openspeed" then
@@ -4958,7 +5071,8 @@ Command.Add(
 				return
 			end
 			Settings.Options.OpenSpeed = NewSpeed
-			UIFuncs.FrameSpeed = NewSpeed
+			UIFuncs.ApplySettings()
+			UIFuncs.SaveSettings()
 			UIFuncs.SendNotification("Mada Admin", "Open speed set to <b>" .. tostring(NewSpeed) .. "</b>", 5)
 			return
 		elseif Action == "closespeed" then
@@ -4972,13 +5086,34 @@ Command.Add(
 				return
 			end
 			Settings.Options.CloseSpeed = NewSpeed
-			UIFuncs.CloseSpeed = NewSpeed
+			UIFuncs.ApplySettings()
+			UIFuncs.SaveSettings()
 			UIFuncs.SendNotification("Mada Admin", "Close speed set to <b>" .. tostring(NewSpeed) .. "</b>", 5)
+			return
+		elseif Action == "current" or Action == "show" then
+			UIFuncs.SendNotification(
+				"Mada Admin",
+				"Prefix: <b>" .. Settings.Prefix .. "</b> | Separator: <b>" .. Settings.GetPlayerSeperator ..
+					"</b> | Notif: <b>" .. tostring(Settings.Options.NotificationTweenSpeed) ..
+					"</b> | Open: <b>" .. tostring(Settings.Options.OpenSpeed) ..
+					"</b> | Close: <b>" .. tostring(Settings.Options.CloseSpeed) .. "</b>",
+				8
+			)
+			return
+		elseif Action == "reset" then
+			Settings.Prefix = ";"
+			Settings.GetPlayerSeperator = ","
+			Settings.Options.NotificationTweenSpeed = 0.2
+			Settings.Options.OpenSpeed = 0.5
+			Settings.Options.CloseSpeed = 0.3
+			UIFuncs.ApplySettings()
+			UIFuncs.SaveSettings()
+			UIFuncs.SendNotification("Mada Admin", "Settings reset to defaults", 5)
 			return
 		elseif Action == "list" or Action == "help" then
 			UIFuncs.SendNotification(
 				"Mada Admin",
-				"Settings: <b>open</b>, <b>prefix</b>, <b>separator</b>, <b>notifspeed</b>, <b>openspeed</b>, <b>closespeed</b>",
+				"Settings: <b>open</b>, <b>current</b>, <b>prefix</b>, <b>separator</b>, <b>notifspeed</b>, <b>openspeed</b>, <b>closespeed</b>, <b>reset</b>",
 				8
 			)
 			return
@@ -5296,9 +5431,9 @@ GUI = {}
 
 GUI.Top = function(Method)
 	if Method == "Open" or Method == "open" then
-		UIFuncs.Open(Interface.Top, 287, 39, 0.5)
+		UIFuncs.Open(Interface.Top, 287, 39, UIFuncs.FrameSpeed)
 	else
-		UIFuncs.Close(Interface.Top, 0.4)
+		UIFuncs.Close(Interface.Top, UIFuncs.CloseSpeed)
 	end
 end
 
