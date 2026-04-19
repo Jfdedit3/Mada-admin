@@ -8,23 +8,28 @@ local Settings = {
 	Version = "1.0",
 	Themes = {
 		--// Gui
-		PrimaryBGColor = Color3.fromRGB(17, 24, 39),
-		TopbarColor = Color3.fromRGB(26, 35, 56),
-		PrimaryTextColor = Color3.fromRGB(248, 250, 252),
-		SecondaryTextColor = Color3.fromRGB(191, 219, 254),
-		ImageColor = Color3.fromRGB(255, 255, 255),
-		OutlineColor = Color3.fromRGB(7, 10, 18),
-		OutlineColor2 = Color3.fromRGB(74, 144, 226),
-		AccentColor = Color3.fromRGB(56, 189, 248),
-		AccentColorDark = Color3.fromRGB(14, 116, 144),
-		OverlayColor = Color3.fromRGB(8, 12, 22),
+		PrimaryBGColor = Color3.fromRGB(19, 15, 14),
+		TopbarColor = Color3.fromRGB(41, 28, 24),
+		PrimaryTextColor = Color3.fromRGB(246, 237, 223),
+		SecondaryTextColor = Color3.fromRGB(221, 191, 160),
+		ImageColor = Color3.fromRGB(255, 245, 231),
+		OutlineColor = Color3.fromRGB(10, 8, 7),
+		OutlineColor2 = Color3.fromRGB(214, 126, 70),
+		AccentColor = Color3.fromRGB(239, 149, 84),
+		AccentColorDark = Color3.fromRGB(126, 63, 36),
+		OverlayColor = Color3.fromRGB(8, 6, 5),
+		CardColor = Color3.fromRGB(28, 21, 19),
+		CardColorAlt = Color3.fromRGB(56, 39, 32),
+		AccentSoft = Color3.fromRGB(255, 211, 168),
+		SuccessColor = Color3.fromRGB(101, 176, 112),
+		DangerColor = Color3.fromRGB(203, 95, 78),
 		--// CmdBar
-		CommandLinesColor = Color3.fromRGB(35, 48, 74),
-		CommandCenterBarColor = Color3.fromRGB(22, 32, 51),
-		EdgeColor = Color3.fromRGB(15, 23, 42),
-		AutofillColor = Color3.fromRGB(24, 35, 58),
-		AutofillTextColor = Color3.fromRGB(224, 242, 254),
-		InputTextColor = Color3.fromRGB(248, 250, 252)
+		CommandLinesColor = Color3.fromRGB(78, 56, 46),
+		CommandCenterBarColor = Color3.fromRGB(33, 24, 22),
+		EdgeColor = Color3.fromRGB(88, 61, 49),
+		AutofillColor = Color3.fromRGB(42, 30, 26),
+		AutofillTextColor = Color3.fromRGB(255, 236, 213),
+		InputTextColor = Color3.fromRGB(255, 246, 237)
 	},
 	KeyBinds = {},
 	Waypoints = {},
@@ -119,12 +124,139 @@ local CommandToggles = {
 	Loop = false,
 	LoopGrabDelete = false,
 	Stand = false,
+	HeadSit = false,
 	Mute = false,
 	Glitch = false,
+	AntiKick = false,
+	AntiTeleport = false,
+	ControlNPCs = false,
+	Fly = false,
+	UnanchoredGravity = false
 }
 
+local Runtime = {
+	Connections = {},
+	Loops = {},
+	CleanupCallbacks = {},
+	State = {},
+	Flags = {}
+}
+
+local function SafeDisconnect(Connection)
+	if Connection then
+		pcall(function()
+			Connection:Disconnect()
+		end)
+	end
+end
+
+function Runtime.BindConnection(Name, Signal, Callback)
+	if Runtime.Connections[Name] then
+		SafeDisconnect(Runtime.Connections[Name])
+	end
+
+	local Connection = Signal:Connect(Callback)
+	Runtime.Connections[Name] = Connection
+	return Connection
+end
+
+function Runtime.TrackConnection(Name, Connection)
+	if Runtime.Connections[Name] then
+		SafeDisconnect(Runtime.Connections[Name])
+	end
+
+	Runtime.Connections[Name] = Connection
+	return Connection
+end
+
+function Runtime.Disconnect(Name)
+	if Runtime.Connections[Name] then
+		SafeDisconnect(Runtime.Connections[Name])
+		Runtime.Connections[Name] = nil
+	end
+end
+
+function Runtime.StartLoop(Name, Callback)
+	if Runtime.Loops[Name] then
+		Runtime.Loops[Name].Active = false
+	end
+
+	local Token = {Active = true}
+	Runtime.Loops[Name] = Token
+
+	task.spawn(function()
+		local success, err =
+			pcall(function()
+				Callback(Token)
+			end)
+
+		if not success then
+			warn("[Mada Admin] Loop '" .. tostring(Name) .. "' failed:", err)
+		end
+
+		if Runtime.Loops[Name] == Token then
+			Runtime.Loops[Name] = nil
+		end
+	end)
+
+	return Token
+end
+
+function Runtime.StopLoop(Name)
+	if Runtime.Loops[Name] then
+		Runtime.Loops[Name].Active = false
+		Runtime.Loops[Name] = nil
+	end
+end
+
+function Runtime.RegisterCleanup(Name, Callback)
+	Runtime.CleanupCallbacks[Name] = Callback
+	return Callback
+end
+
+function Runtime.RunCleanup(Name)
+	local Callback = Runtime.CleanupCallbacks[Name]
+	if not Callback then
+		return
+	end
+
+	Runtime.CleanupCallbacks[Name] = nil
+
+	local success, err = pcall(Callback)
+	if not success then
+		warn("[Mada Admin] Cleanup '" .. tostring(Name) .. "' failed:", err)
+	end
+end
+
+function Runtime.CleanupAll()
+	for Name in next, Runtime.Loops do
+		Runtime.StopLoop(Name)
+	end
+
+	for Name in next, Runtime.Connections do
+		Runtime.Disconnect(Name)
+	end
+
+	for Name in next, Runtime.CleanupCallbacks do
+		Runtime.RunCleanup(Name)
+	end
+end
+
+local function SafeGetObjects(AssetId)
+	local success, Objects =
+		pcall(function()
+			return game:GetObjects("rbxassetid://" .. tostring(AssetId))
+		end)
+
+	if success and type(Objects) == "table" and Objects[1] then
+		return Objects
+	end
+
+	error("Failed to load asset rbxassetid://" .. tostring(AssetId))
+end
+
 local Interface
-Interface = game:GetObjects("rbxassetid://15144458714")[1]
+Interface = SafeGetObjects(15144458714)[1]
 Interface.Parent = Services.CoreGui
 
 Interface.Servers.Visible = false
@@ -156,10 +288,10 @@ local UIFuncs = {
 	FrameSpeed = 0.5,
 	CloseSpeed = 0.3,
 	Styles = {
-		OpenEasingStyle = Enum.EasingStyle.Back,
-		OpenEasingDirection = Enum.EasingDirection.InOut,
-		CloseEasingStyle = Enum.EasingStyle.Sine,
-		CloseEasingDirection = Enum.EasingDirection.Out
+		OpenEasingStyle = Enum.EasingStyle.Exponential,
+		OpenEasingDirection = Enum.EasingDirection.Out,
+		CloseEasingStyle = Enum.EasingStyle.Quint,
+		CloseEasingDirection = Enum.EasingDirection.In
 	},
 	--// Notification
 	NotificationHandler = Interface.Notification,
@@ -176,11 +308,21 @@ UIFuncs.FrameSpeed = Settings.Options.OpenSpeed
 UIFuncs.CloseSpeed = Settings.Options.CloseSpeed
 UIFuncs.SingleConnections = {}
 UIFuncs.SmoothStyles = {
-	PanelOpen = TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-	PanelClose = TweenInfo.new(0.26, Enum.EasingStyle.Quart, Enum.EasingDirection.In),
-	Fade = TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+	PanelOpen = TweenInfo.new(0.42, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out),
+	PanelClose = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+	Fade = TweenInfo.new(0.24, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
 	FadeFast = TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
-	Slide = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	Slide = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+	TabSlide = TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+	SlideOut = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+	NotificationPop = TweenInfo.new(0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out),
+	NotificationCollapse = TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+	Overlay = TweenInfo.new(0.24, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+	IconFade = TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+	CmdBarOpen = TweenInfo.new(0.28, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out),
+	CmdBarClose = TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+	AutoFillOpen = TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+	AutoFillClose = TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 }
 
 function UIFuncs.GetNotificationTemplate()
@@ -207,14 +349,39 @@ function UIFuncs.ApplySettings()
 	UIFuncs.NotificationTweenSpeed = Settings.Options.NotificationTweenSpeed or 0.2
 	UIFuncs.FrameSpeed = Settings.Options.OpenSpeed or 0.5
 	UIFuncs.CloseSpeed = Settings.Options.CloseSpeed or 0.3
+	local NotificationSpeed = math.max(0.12, UIFuncs.NotificationTweenSpeed)
+	local OpenSpeed = math.max(0.24, UIFuncs.FrameSpeed)
+	local CloseSpeed = math.max(0.16, UIFuncs.CloseSpeed)
 	UIFuncs.SmoothStyles.PanelOpen =
-		TweenInfo.new(UIFuncs.FrameSpeed, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+		TweenInfo.new(OpenSpeed, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 	UIFuncs.SmoothStyles.PanelClose =
-		TweenInfo.new(UIFuncs.CloseSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		TweenInfo.new(CloseSpeed, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 	UIFuncs.SmoothStyles.Fade =
-		TweenInfo.new(math.max(0.12, UIFuncs.NotificationTweenSpeed), Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+		TweenInfo.new(math.max(0.16, NotificationSpeed + 0.04), Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 	UIFuncs.SmoothStyles.FadeFast =
-		TweenInfo.new(math.max(0.1, UIFuncs.NotificationTweenSpeed * 0.75), Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+		TweenInfo.new(math.max(0.12, NotificationSpeed * 0.72), Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.Slide =
+		TweenInfo.new(math.max(0.24, OpenSpeed * 0.74), Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.TabSlide =
+		TweenInfo.new(math.max(0.28, OpenSpeed * 0.82), Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.SlideOut =
+		TweenInfo.new(math.max(0.18, CloseSpeed * 0.78), Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+	UIFuncs.SmoothStyles.NotificationPop =
+		TweenInfo.new(math.max(0.2, NotificationSpeed + 0.1), Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.NotificationCollapse =
+		TweenInfo.new(math.max(0.16, NotificationSpeed), Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+	UIFuncs.SmoothStyles.Overlay =
+		TweenInfo.new(math.max(0.18, NotificationSpeed + 0.02), Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.IconFade =
+		TweenInfo.new(math.max(0.14, NotificationSpeed * 0.68), Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.CmdBarOpen =
+		TweenInfo.new(math.max(0.22, OpenSpeed * 0.6), Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.CmdBarClose =
+		TweenInfo.new(math.max(0.16, CloseSpeed * 0.78), Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+	UIFuncs.SmoothStyles.AutoFillOpen =
+		TweenInfo.new(math.max(0.18, NotificationSpeed + 0.02), Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	UIFuncs.SmoothStyles.AutoFillClose =
+		TweenInfo.new(math.max(0.14, CloseSpeed * 0.58), Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 end
 
 function UIFuncs.BindSingle(Name, Signal, Callback)
@@ -277,6 +444,268 @@ function UIFuncs.SaveSettings()
 end
 
 UIFuncs.LoadSavedSettings()
+
+local function NotifyRuntime(Title, Description, Duration)
+	if UIFuncs and UIFuncs.SendNotification then
+		pcall(function()
+			UIFuncs.SendNotification(Title, Description, Duration or 5)
+		end)
+	else
+		warn("[Mada Admin] " .. tostring(Title) .. ": " .. tostring(Description))
+	end
+end
+
+function NFuncs.ShallowCopy(Array)
+	local Clone = {}
+	for Index, Value in next, Array or {} do
+		Clone[Index] = Value
+	end
+	return Clone
+end
+
+function NFuncs.SafeHttpGet(URL, UseAsync)
+	local RequestMethod = UseAsync and game.HttpGetAsync or game.HttpGet
+	if type(RequestMethod) ~= "function" then
+		return false, "HttpGet is not available in this executor"
+	end
+
+	return pcall(function()
+		return RequestMethod(game, URL)
+	end)
+end
+
+function NFuncs.ExecuteRemoteScript(URL, Label, UseAsync)
+	if not loadstring then
+		NotifyRuntime("Mada Admin", "This executor does not support loadstring for " .. tostring(Label), 5)
+		return false
+	end
+
+	local success, Response = NFuncs.SafeHttpGet(URL, UseAsync)
+	if not success or type(Response) ~= "string" or Response == "" then
+		NotifyRuntime("Mada Admin", "Unable to download " .. tostring(Label), 5)
+		return false
+	end
+
+	local compileSuccess, Compiled = pcall(loadstring, Response)
+	if not compileSuccess or type(Compiled) ~= "function" then
+		NotifyRuntime("Mada Admin", "Unable to compile " .. tostring(Label), 5)
+		return false
+	end
+
+	local runSuccess, runErr = pcall(Compiled)
+	if not runSuccess then
+		warn("[Mada Admin] External script failed:", runErr)
+		NotifyRuntime("Mada Admin", tostring(Label) .. " failed to run", 5)
+		return false
+	end
+
+	return true
+end
+
+function NFuncs.ExecuteAssetScript(AssetId, Label)
+	if not loadstring then
+		NotifyRuntime("Mada Admin", "This executor does not support loadstring for " .. tostring(Label), 5)
+		return false
+	end
+
+	local success, Objects = pcall(SafeGetObjects, AssetId)
+	if not success or type(Objects) ~= "table" or not Objects[1] or type(Objects[1].Source) ~= "string" then
+		NotifyRuntime("Mada Admin", "Unable to load asset for " .. tostring(Label), 5)
+		return false
+	end
+
+	local compileSuccess, Compiled = pcall(loadstring, Objects[1].Source)
+	if not compileSuccess or type(Compiled) ~= "function" then
+		NotifyRuntime("Mada Admin", "Unable to compile asset for " .. tostring(Label), 5)
+		return false
+	end
+
+	local runSuccess, runErr = pcall(Compiled)
+	if not runSuccess then
+		warn("[Mada Admin] Asset script failed:", runErr)
+		NotifyRuntime("Mada Admin", tostring(Label) .. " failed to run", 5)
+		return false
+	end
+
+	return true
+end
+
+function NFuncs.SafeJSONGet(URL)
+	local success, Response = NFuncs.SafeHttpGet(URL, true)
+	if not success or type(Response) ~= "string" then
+		return false, Response
+	end
+
+	return pcall(function()
+		return Services.HttpService:JSONDecode(Response)
+	end)
+end
+
+function NFuncs.InstallNamecallProtection()
+	if Runtime.Flags.NamecallProtectionInstalled then
+		return true, Runtime.Flags.NamecallProtectionMode or "unknown"
+	end
+
+	local WrapClosure = newcclosure or function(Callback)
+		return Callback
+	end
+
+	local function TryDirectMethodHooks()
+		if not hookfunction then
+			return false, "missing getnamecallmethod and hookfunction"
+		end
+
+		local HookedMethods = 0
+
+		local function HookMethod(FunctionValue, ShouldBlock)
+			if type(FunctionValue) ~= "function" then
+				return false
+			end
+
+			local Original
+			local success =
+				pcall(function()
+					Original =
+						hookfunction(
+							FunctionValue,
+							WrapClosure(
+								function(...)
+									if ShouldBlock(...) then
+										return
+									end
+
+									return Original(...)
+								end
+							)
+						)
+				end)
+
+			if success and Original then
+				HookedMethods = HookedMethods + 1
+				return true
+			end
+
+			return false
+		end
+
+		HookMethod(
+			Services.LocalPlayer and Services.LocalPlayer.Kick,
+			function(Self, ...)
+				return CommandToggles.AntiKick and Self == Services.LocalPlayer
+			end
+		)
+
+		local function BlockTeleport(Self)
+			return CommandToggles.AntiTeleport and Self == Services.TeleportService
+		end
+
+		HookMethod(Services.TeleportService and Services.TeleportService.Teleport, BlockTeleport)
+		HookMethod(Services.TeleportService and Services.TeleportService.TeleportToPlaceInstance, BlockTeleport)
+		HookMethod(Services.TeleportService and Services.TeleportService.TeleportAsync, BlockTeleport)
+
+		if HookedMethods > 0 then
+			Runtime.Flags.NamecallProtectionInstalled = true
+			Runtime.Flags.NamecallProtectionMode = "directmethod"
+			return true, "directmethod"
+		end
+
+		return false, "direct method hooks failed"
+	end
+
+	if not getnamecallmethod then
+		return TryDirectMethodHooks()
+	end
+
+	local function BuildProtectedNamecall(OldNamecall)
+		return WrapClosure(
+			function(Self, ...)
+				local Method = getnamecallmethod()
+				local LowerMethod = tostring(Method):lower()
+
+				if CommandToggles.AntiKick and Self == Services.LocalPlayer and LowerMethod == "kick" then
+					return
+				end
+
+				if
+					CommandToggles.AntiTeleport and
+					(
+						(Self == Services.TeleportService and LowerMethod == "teleport") or
+						LowerMethod == "teleporttoplaceinstance"
+					)
+				then
+					return
+				end
+
+				return OldNamecall(Self, ...)
+			end
+		)
+	end
+
+	if hookmetamethod then
+		local OldNamecall
+		local success =
+			pcall(function()
+				OldNamecall =
+					hookmetamethod(
+						game,
+						"__namecall",
+						BuildProtectedNamecall(function(Self, ...)
+							return OldNamecall(Self, ...)
+						end)
+					)
+			end)
+
+		if success and OldNamecall then
+			Runtime.Flags.NamecallProtectionInstalled = true
+			Runtime.Flags.NamecallProtectionMode = "hookmetamethod"
+			return true, "hookmetamethod"
+		end
+	end
+
+	local SetReadOnly = setreadonly
+	if not SetReadOnly and make_writeable and make_readonly then
+		SetReadOnly =
+			function(Table, ReadOnly)
+				if ReadOnly then
+					make_readonly(Table)
+				else
+					make_writeable(Table)
+				end
+			end
+	end
+
+	local GetRawMetatable = (debug and debug.getmetatable) or getrawmetatable
+	if not (GetRawMetatable and SetReadOnly) then
+		if not GetRawMetatable then
+			return false, "missing getrawmetatable/debug.getmetatable"
+		end
+		return false, "missing setreadonly or make_writeable/make_readonly"
+	end
+
+	local GameMetaTable = GetRawMetatable(game)
+	local OldNamecall = GameMetaTable and GameMetaTable.__namecall
+	if type(OldNamecall) ~= "function" then
+		return false, "__namecall unavailable on raw metatable"
+	end
+
+	local success =
+		pcall(function()
+			SetReadOnly(GameMetaTable, false)
+			GameMetaTable.__namecall = BuildProtectedNamecall(OldNamecall)
+			SetReadOnly(GameMetaTable, true)
+		end)
+
+	if not success then
+		pcall(function()
+			SetReadOnly(GameMetaTable, true)
+		end)
+		return false, "raw metatable is locked or write access failed"
+	end
+
+	Runtime.Flags.NamecallProtectionInstalled = true
+	Runtime.Flags.NamecallProtectionMode = "rawmetatable"
+	return true, "rawmetatable"
+end
 
 function NFuncs.CheckIfNPC(Character)
 	if
@@ -353,42 +782,48 @@ end
 end]]
 function PlayerFuncs.GetPlayer(Arg)
 	local Target = {}
+	local function AddUnique(Candidate)
+		if Candidate and not table.find(Target, Candidate) then
+			table.insert(Target, Candidate)
+		end
+	end
 
 	local PlayerNames = Library.ParseText(Arg, Settings.GetPlayerSeperator)
 	for i, String in next, PlayerNames or {"me"} do
 		if String == nil then
-			table.insert(Target, Services.LocalPlayer)
+			AddUnique(Services.LocalPlayer)
 		elseif String:lower() == "random" then
-			table.insert(Target, Services.Players:GetPlayers()[math.random(#Services.Players:GetPlayers())])
+			AddUnique(Services.Players:GetPlayers()[math.random(#Services.Players:GetPlayers())])
 		elseif String:lower() == "me" then
-			table.insert(Target, Services.LocalPlayer)
+			AddUnique(Services.LocalPlayer)
 		elseif String:lower() == "all" then
 			for i, Player in next, Services.Players:GetPlayers() do
-				table.insert(Target, Player)
+				AddUnique(Player)
 			end
 		elseif String:lower() == "others" then
 			for i, Player in next, Services.Players:GetPlayers() do
 				if Player ~= Services.LocalPlayer then
-					table.insert(Target, Player)
+					AddUnique(Player)
 				end
 			end
-		elseif String:find("*") == 1 then --// Team search
+		elseif String:sub(1, 1) == "*" then --// Team search
+			local TeamQuery = String:sub(2):lower()
 			for i, Player in next, Services.Players:GetPlayers() do
-				if tostring(Player.Team):lower():find(String:gsub(2)) then
-					table.insert(Target, Player)
+				if TeamQuery ~= "" and tostring(Player.Team):lower():find(TeamQuery, 1, true) then
+					AddUnique(Player)
 				end
 			end
 		elseif String:lower() == "enemies" then
 			for i, Player in next, Services.Players:GetPlayers() do
 				if Player.Team ~= Services.LocalPlayer.Team then
-					table.insert(Target, Player)
+					AddUnique(Player)
 				end
 			end
 		elseif String:lower() == "dead" then
 			for i, Player in next, Services.Players:GetPlayers() do
 				if Player.Character and Player.Character.Humanoid then
 					if Player.Character.Humanoid.Health == 0 then
-						table.insert(Target, Player)
+						AddUnique(Player)
 					end
 				end
 			end
@@ -396,26 +831,26 @@ function PlayerFuncs.GetPlayer(Arg)
 			for i, Player in next, Services.Players:GetPlayers() do
 				if Player.Character and Player.Character.Humanoid then
 					if Player.Character.Humanoid.Health > 0 then
-						table.insert(Target, Player)
+						AddUnique(Player)
 					end
 				end
 			end
 		elseif String:lower() == "npc" then
 			for i, NPC in next, workspace:GetDescendants() do
 				if NFuncs.CheckIfNPC(NPC) then
-					table.insert(Target, NPC)
+					AddUnique(NPC)
 				end
 			end
 		elseif String:lower() == "friends" then
 			for i, Player in next, Services.Players:GetPlayers() do
 				if Player:IsFriendsWith(Services.LocalPlayer.UserId) and Player ~= Services.LocalPlayer then
-					table.insert(Target, Player)
+					AddUnique(Player)
 				end
 			end
 		elseif String:lower() == "nonfriends" then
 			for i, Player in next, Services.Players:GetPlayers() do
 				if not Player:IsFriendsWith(Services.LocalPlayer.UserId) and Player ~= Services.LocalPlayer then
-					table.insert(Target, Player)
+					AddUnique(Player)
 				end
 			end
 		elseif String:lower() == "closest" then
@@ -432,20 +867,22 @@ function PlayerFuncs.GetPlayer(Arg)
 						end
 					end
 				end
-				table.insert(Target, LPlayer)
+				AddUnique(LPlayer)
 			end
 		elseif String:lower() == "farthest" then
 			local Highest = 0
+			local HPlayer
 			if Services.LocalPlayer.Character then
 				for i, Player in next, Services.Players:GetPlayers() do
 					if Player.Character and Player ~= Services.LocalPlayer then
 						local Distance = Player:DistanceFromCharacter(Services.Character.HumanoidRootPart.Position)
 						if Distance > Highest then
 							Highest = Distance
-							table.insert(Target, Player)
+							HPlayer = Player
 						end
 					end
 				end
+				AddUnique(HPlayer)
 			else
 				return
 			end
@@ -453,9 +890,9 @@ function PlayerFuncs.GetPlayer(Arg)
 			String = String:lower():gsub("%s", "")
 			for _, Player in next, Services.Players:GetPlayers() do
 				if Player.Name:lower():match(String) then
-					table.insert(Target, Player)
+					AddUnique(Player)
 				elseif Player.DisplayName:lower():match("^" .. String) then
-					table.insert(Target, Player)
+					AddUnique(Player)
 				end
 			end
 		end
@@ -567,6 +1004,116 @@ function PlayerFuncs.UnFling()
 
 	HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
 	HumanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+	return true
+end
+
+function PlayerFuncs.Lay()
+	local Character = Services.LocalPlayer.Character
+	if not Character then
+		Character = Services.LocalPlayer.CharacterAdded:Wait()
+	end
+
+	local Humanoid = Character:FindFirstChildWhichIsA("Humanoid")
+	if not Humanoid then
+		Character = Services.LocalPlayer.CharacterAdded:Wait()
+		Humanoid = Character:FindFirstChildWhichIsA("Humanoid")
+	end
+
+	local RootPart = Humanoid and (Humanoid.RootPart or Character:FindFirstChild("HumanoidRootPart"))
+	if not Humanoid or not RootPart then
+		return false
+	end
+
+	-- Kolinski uses execCmd("unnosit") here; Mada has no nosit system to disable.
+	Humanoid.Sit = true
+	task.wait(0.1)
+	RootPart.CFrame = RootPart.CFrame * CFrame.Angles(math.pi * 0.5, 0, 0)
+	for _, Track in ipairs(Humanoid:GetPlayingAnimationTracks()) do
+		Track:Stop()
+	end
+	return true
+end
+
+function PlayerFuncs.Sit()
+	local Character = Services.LocalPlayer.Character
+	if not Character then
+		Character = Services.LocalPlayer.CharacterAdded:Wait()
+	end
+
+	local Humanoid = Character and Character:FindFirstChildWhichIsA("Humanoid")
+	if not Humanoid then
+		return false
+	end
+
+	Humanoid.Sit = true
+	return true
+end
+
+function PlayerFuncs.HeadSit(TargetName)
+	local Targets = PlayerFuncs.GetPlayer(TargetName)
+	local Target = nil
+	for _, Candidate in next, Targets do
+		if Candidate and Candidate ~= Services.LocalPlayer then
+			Target = Candidate
+			break
+		end
+	end
+
+	if not Target then
+		return false
+	end
+
+	CommandToggles.HeadSit = false
+	task.wait(0.05)
+	CommandToggles.HeadSit = true
+
+	local JumpCancelled = false
+	local JumpConnection
+	JumpConnection =
+		Services.UserInputService.JumpRequest:Connect(
+			function()
+				JumpCancelled = true
+				CommandToggles.HeadSit = false
+				if JumpConnection then
+					JumpConnection:Disconnect()
+					JumpConnection = nil
+				end
+			end
+		)
+
+	task.spawn(
+		function()
+			while CommandToggles.HeadSit do
+				local Character = Services.LocalPlayer.Character
+				local Humanoid = Character and Character:FindFirstChildWhichIsA("Humanoid")
+				local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+				local TargetCharacter = Target.Character
+				local TargetHead = TargetCharacter and TargetCharacter:FindFirstChild("Head")
+				local TargetHumanoid = TargetCharacter and TargetCharacter:FindFirstChildWhichIsA("Humanoid")
+
+				if not Character or not Root or not Humanoid or not TargetHead or not TargetHumanoid or TargetHumanoid.Health <= 0 then
+					break
+				end
+
+				if JumpCancelled or Humanoid.Jump or Humanoid:GetState() == Enum.HumanoidStateType.Jumping then
+					break
+				end
+
+				Humanoid.Sit = true
+				Root.CFrame = TargetHead.CFrame * CFrame.new(0, 1.35, 0)
+				Root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				Root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+				task.wait()
+			end
+
+			CommandToggles.HeadSit = false
+			if JumpConnection then
+				JumpConnection:Disconnect()
+				JumpConnection = nil
+			end
+		end
+	)
+
 	return true
 end
 
@@ -771,6 +1318,7 @@ function UIFuncs.RefreshInformationBranding()
 				local Updated = CurrentText
 				Updated = Updated:gsub("[Nn]ameless [Aa]dmin", "Mada Admin")
 				Updated = Updated:gsub("[Nn]ameless", "Mada")
+				Updated = Updated:gsub("Mada Control", "Mada Admin")
 				if Updated ~= CurrentText then
 					Descendant.Text = Updated
 				end
@@ -789,11 +1337,10 @@ function UIFuncs.Open(Frame, OffsetSizeX, OffsetSizeY, Speed)
 			Frame.Position = UDim2.new(0.5, 0, 0.5, 0)
 		end
 		Frame.BackgroundTransparency = math.clamp(Frame.BackgroundTransparency or 0, 0, 1)
-		UIFuncs.Tween(
-			Frame,
-			TweenInfo.new(Speed, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{Size = UDim2.fromOffset(OffsetSizeX, OffsetSizeY)}
-		)
+		local OpenTween =
+			Speed == UIFuncs.FrameSpeed and UIFuncs.SmoothStyles.PanelOpen or
+			TweenInfo.new(Speed, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+		UIFuncs.Tween(Frame, OpenTween, {Size = UDim2.fromOffset(OffsetSizeX, OffsetSizeY)})
 	end
 end
 
@@ -804,11 +1351,10 @@ function UIFuncs.Close(Frame, Speed, OffsetX, OffsetY)
 			OffsetX = 0
 			OffsetY = 0
 		end
-		UIFuncs.Tween(
-			Frame,
-			TweenInfo.new(Speed, Enum.EasingStyle.Quart, Enum.EasingDirection.In),
-			{Size = UDim2.fromOffset(0, 0)}
-		)
+		local CloseTween =
+			Speed == UIFuncs.CloseSpeed and UIFuncs.SmoothStyles.PanelClose or
+			TweenInfo.new(Speed, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		UIFuncs.Tween(Frame, CloseTween, {Size = UDim2.fromOffset(0, 0)})
 		spawn(
 			function()
 				task.wait(Speed + 0.04)
@@ -945,7 +1491,7 @@ end
 function UIFuncs.AddCommand(Name, Description, Args)
 	local Commands = Interface.Commands
 	local Tabs = Commands.Tabs
-	local TweenSpeed = 0.34
+	local TweenSpeed = math.max(0.28, UIFuncs.FrameSpeed * 0.82)
 	local Back = Commands.Topbar.Back
 	local Cooldown = false
 
@@ -954,6 +1500,14 @@ function UIFuncs.AddCommand(Name, Description, Args)
 	NewCommand.Visible = true
 	NewCommand.Description.Text = Description
 	NewCommand.Title.Text = Name
+	if NewCommand:FindFirstChild("Description") then
+		NewCommand.Description.TextColor3 = Settings.Themes.SecondaryTextColor
+		NewCommand.Description.Font = Enum.Font.GothamMedium
+	end
+	if NewCommand:FindFirstChild("Title") then
+		NewCommand.Title.TextColor3 = Settings.Themes.PrimaryTextColor
+		NewCommand.Title.Font = Enum.Font.GothamBold
+	end
 
 	NewCommand.MouseButton1Click:Connect(
 		function()
@@ -961,8 +1515,8 @@ function UIFuncs.AddCommand(Name, Description, Args)
 				Cooldown = true
 				Back.Icon.Image = "rbxassetid://11422143469"
 				Tabs.CommandInfoExample.Visible = true
-				UIFuncs.Tween(Tabs.Commands, UIFuncs.SmoothStyles.Slide, {Position = UDim2.new(0, -310, 0, 0)})
-				UIFuncs.Tween(Tabs.CommandInfoExample, UIFuncs.SmoothStyles.Slide, {Position = UDim2.new(0, 0, 0, 0)})
+				UIFuncs.Tween(Tabs.Commands, UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, -310, 0, 0)})
+				UIFuncs.Tween(Tabs.CommandInfoExample, UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 0, 0, 0)})
 				local Arguments = Tabs.CommandInfoExample.Arguments
 				Arguments.Title.Text = Name
 				Arguments.Description.Text = Args
@@ -981,8 +1535,8 @@ function UIFuncs.AddCommand(Name, Description, Args)
 					Cooldown = true
 					Back.Icon.Image = "rbxassetid://11293977875"
 					Tabs.Commands.Visible = true
-					UIFuncs.Tween(Tabs.Commands, UIFuncs.SmoothStyles.Slide, {Position = UDim2.new(0, 0, 0, 0)})
-					UIFuncs.Tween(Tabs.CommandInfoExample, UIFuncs.SmoothStyles.Slide, {Position = UDim2.new(0, 310, 0, 0)})
+					UIFuncs.Tween(Tabs.Commands, UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 0, 0, 0)})
+					UIFuncs.Tween(Tabs.CommandInfoExample, UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 310, 0, 0)})
 					task.wait(TweenSpeed + 0.04)
 					Tabs.CommandInfoExample.Visible = false
 					Cooldown = false
@@ -999,6 +1553,7 @@ end
 function UIFuncs.SendNotification(Title, Description, Duration)
 	spawn(
 		function()
+			Duration = Duration or 5
 			local NotificationTemplate = UIFuncs.GetNotificationTemplate()
 			if not NotificationTemplate then
 				warn("Mada Admin: notification template not found")
@@ -1050,15 +1605,7 @@ function UIFuncs.SendNotification(Title, Description, Duration)
 			if DescriptionLabel then
 				UIFuncs.Tween(DescriptionLabel, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
 			end
-			UIFuncs.Tween(
-				ClonedNotif,
-				TweenInfo.new(
-					math.max(0.18, UIFuncs.NotificationTweenSpeed + 0.08),
-					Enum.EasingStyle.Quint,
-					Enum.EasingDirection.Out
-				),
-				{Size = UIFuncs.OriginalNotificationSize}
-			)
+			UIFuncs.Tween(ClonedNotif, UIFuncs.SmoothStyles.NotificationPop, {Size = UIFuncs.OriginalNotificationSize})
 			if TimerBar then
 				UIFuncs.Tween(
 					TimerBar,
@@ -1077,11 +1624,7 @@ function UIFuncs.SendNotification(Title, Description, Duration)
 				UIFuncs.Tween(DescriptionLabel, UIFuncs.SmoothStyles.FadeFast, {TextTransparency = 1})
 			end
 			UIFuncs.Tween(ClonedNotif, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
-			UIFuncs.Tween(
-				ClonedNotif,
-				TweenInfo.new(math.max(0.14, UIFuncs.NotificationTweenSpeed), Enum.EasingStyle.Quart, Enum.EasingDirection.In),
-				{Size = UDim2.new(0, 0, 0, 40)}
-			)
+			UIFuncs.Tween(ClonedNotif, UIFuncs.SmoothStyles.NotificationCollapse, {Size = UDim2.new(0, 0, 0, 40)})
 			task.wait(math.max(0.14, UIFuncs.NotificationTweenSpeed) + 0.02)
 			ClonedNotif:Destroy()
 		end
@@ -1128,36 +1671,77 @@ local Button =
 			Parent = UserInterface,
 			Name = NFuncs.RandomString(),
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.499, 0, 0.08, 0),
-			Size = UDim2.new(0, 40, 0, 40),
-			BackgroundColor3 = Settings.Themes.PrimaryBGColor,
+			Position = UDim2.new(0.5, 0, 0.092, 0),
+			Size = UDim2.new(0, 54, 0, 54),
+			BackgroundColor3 = Settings.Themes.CardColor,
 			Text = "MA",
-			TextSize = 14,
+			TextSize = 16,
 			Font = Enum.Font.GothamBold,
 			TextColor3 = Settings.Themes.PrimaryTextColor,
-			AutoButtonColor = false
+			AutoButtonColor = false,
+			ZIndex = 3
+		}
+	)
+
+local ButtonPulse =
+	UIFuncs.CreateInstance(
+		"Frame",
+		{
+			Parent = UserInterface,
+			Name = NFuncs.RandomString(),
+			AnchorPoint = Button.AnchorPoint,
+			Position = Button.Position,
+			Size = Button.Size,
+			BackgroundColor3 = Settings.Themes.AccentSoft,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ZIndex = 1
 		}
 	)
 
 UIFuncs.CreateInstance(
+	"UICorner",
+	{
+		Parent = ButtonPulse,
+		CornerRadius = UDim.new(1, 0),
+		Name = NFuncs.RandomString()
+	}
+)
+
+local ButtonPulseStroke =
+	UIFuncs.CreateInstance(
+		"UIStroke",
+		{
+			Thickness = 2.4,
+			Color = Settings.Themes.AccentSoft,
+			Transparency = 1,
+			ApplyStrokeMode = "Border",
+			Parent = ButtonPulse
+		}
+	)
+
+local ButtonStroke =
+	UIFuncs.CreateInstance(
 	"UIStroke",
 	{
-		Thickness = 1.6,
+		Thickness = 1.9,
 		Color = Settings.Themes.AccentColor,
-		Transparency = 0.18,
+		Transparency = 0.06,
 		ApplyStrokeMode = "Border",
 		Parent = Button
 	}
 )
 
-UIFuncs.CreateInstance(
+local ButtonGradient =
+	UIFuncs.CreateInstance(
 	"UIGradient",
 	{
 		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Settings.Themes.AccentColor),
-			ColorSequenceKeypoint.new(1, Settings.Themes.AccentColorDark)
+			ColorSequenceKeypoint.new(0, Settings.Themes.AccentColorDark),
+			ColorSequenceKeypoint.new(0.55, Settings.Themes.AccentColor),
+			ColorSequenceKeypoint.new(1, Settings.Themes.AccentSoft)
 		}),
-		Rotation = 135,
+		Rotation = 28,
 		Parent = Button
 	}
 )
@@ -1171,6 +1755,102 @@ UIFuncs.CreateInstance(
 	}
 )
 
+local function PlayMAIntro()
+	if not Button or not Button.Parent then
+		return
+	end
+
+	local FinalSize = Button.Size
+	local FinalPosition = Button.Position
+	local FinalTextSize = Button.TextSize
+	local OvershootSize = UDim2.fromOffset(FinalSize.X.Offset + 10, FinalSize.Y.Offset + 10)
+	local StartSize = UDim2.fromOffset(math.max(18, math.floor(FinalSize.X.Offset * 0.38)), math.max(18, math.floor(FinalSize.Y.Offset * 0.38)))
+	local StartPosition =
+		UDim2.new(FinalPosition.X.Scale, FinalPosition.X.Offset, FinalPosition.Y.Scale, FinalPosition.Y.Offset - 16)
+
+	Button.Visible = true
+	ButtonPulse.Visible = true
+	ButtonPulse.Position = FinalPosition
+	ButtonPulse.Size = UDim2.fromOffset(12, 12)
+	ButtonPulse.BackgroundTransparency = 0.76
+	Button.BackgroundTransparency = 1
+	Button.TextTransparency = 1
+	Button.TextStrokeTransparency = 1
+	Button.Size = StartSize
+	Button.Position = StartPosition
+	Button.TextSize = math.max(10, FinalTextSize - 4)
+
+	if ButtonStroke then
+		ButtonStroke.Transparency = 1
+		ButtonStroke.Thickness = 3
+	end
+
+	if ButtonGradient then
+		ButtonGradient.Rotation = -110
+	end
+
+	if ButtonPulseStroke then
+		ButtonPulseStroke.Transparency = 0.22
+		ButtonPulseStroke.Thickness = 2.6
+	end
+
+	task.wait(0.06)
+
+	UIFuncs.Tween(
+		Button,
+		TweenInfo.new(0.46, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out),
+		{
+			Size = OvershootSize,
+			Position = FinalPosition,
+			BackgroundTransparency = 0,
+			TextTransparency = 0
+		}
+	)
+	UIFuncs.Tween(ButtonPulse, TweenInfo.new(0.52, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+		Size = UDim2.fromOffset(FinalSize.X.Offset + 54, FinalSize.Y.Offset + 54),
+		BackgroundTransparency = 1
+	})
+
+	if ButtonStroke then
+		UIFuncs.Tween(ButtonStroke, TweenInfo.new(0.34, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+			Transparency = 0.06,
+			Thickness = 1.9
+		})
+	end
+
+	if ButtonPulseStroke then
+		UIFuncs.Tween(ButtonPulseStroke, TweenInfo.new(0.52, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+			Transparency = 1,
+			Thickness = 0.8
+		})
+	end
+
+	if ButtonGradient then
+		UIFuncs.Tween(ButtonGradient, TweenInfo.new(0.62, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Rotation = 28
+		})
+	end
+
+	task.wait(0.18)
+
+	UIFuncs.Tween(
+		Button,
+		TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut),
+		{
+			Size = FinalSize,
+			TextSize = FinalTextSize
+		}
+	)
+
+	task.wait(0.1)
+
+	ButtonPulse.Size = UDim2.fromOffset(FinalSize.X.Offset, FinalSize.Y.Offset)
+	ButtonPulse.BackgroundTransparency = 1
+	if ButtonPulseStroke then
+		ButtonPulseStroke.Transparency = 1
+	end
+end
+
 UIFuncs.Drag(Button, 20)
 --end
 
@@ -1179,39 +1859,50 @@ function UIFuncs.LoadTheme()
 
 	for i, Child in next, Interface:GetDescendants() do
 		if Child:IsA("Frame") and Child.Parent == Interface then
-			Child.BackgroundColor3 = Theme.PrimaryBGColor
+			Child.BackgroundColor3 = Theme.CardColor
 		elseif Child.Name == "Example" and Child:IsA("Frame") then
-			Child.BackgroundColor3 = Theme.TopbarColor
+			Child.BackgroundColor3 = Theme.CardColorAlt
 		elseif Child:IsA("ImageLabel") or Child:IsA("ImageButton") then
 			if Child.Name == "Edge" then
 				Child.ImageColor3 = Theme.EdgeColor
 			else
 				Child.ImageColor3 = Theme.ImageColor
-				Child.BackgroundColor3 = Theme.PrimaryBGColor
+				Child.BackgroundColor3 = Theme.CardColor
 			end
 		elseif Child:IsA("CanvasGroup") then
-			Child.BackgroundColor3 = Theme.TopbarColor
+			Child.BackgroundColor3 = Theme.CardColorAlt
 		elseif Child.Name == "Description" and Child:IsA("TextLabel") then
 			Child.TextColor3 = Theme.SecondaryTextColor
-		elseif Child.Name == "Topbar" or Child.Name == "Bottom" and Child:IsA("Frame") then
+			Child.Font = Enum.Font.GothamMedium
+		elseif (Child.Name == "Topbar" or Child.Name == "Bottom") and Child:IsA("Frame") then
 			Child.BackgroundColor3 = Theme.TopbarColor
 		elseif Child:IsA("TextButton") or Child:IsA("TextBox") then
 			if Child.Name == "Input" and Child.Parent.Name == "CenterBar" then
+				Child.BackgroundColor3 = Theme.CommandCenterBarColor
 				Child.TextColor3 = Theme.InputTextColor
+				Child.PlaceholderColor3 = Theme.SecondaryTextColor
+				Child.Font = Enum.Font.GothamSemibold
 			else
-				Child.BackgroundColor3 = Theme.TopbarColor
+				Child.BackgroundColor3 = Theme.CardColorAlt
 				Child.TextColor3 = Theme.PrimaryTextColor
+				if Child:IsA("TextButton") then
+					Child.Font = Enum.Font.GothamSemibold
+				end
 			end
 		elseif Child.Name == "Title" and Child:IsA("TextLabel") then
 			Child.TextColor3 = Theme.PrimaryTextColor
+			Child.Font = Enum.Font.GothamBold
+		elseif Child:IsA("TextLabel") then
+			Child.TextColor3 = Theme.PrimaryTextColor
+			if Child.Name ~= "Description" then
+				Child.Font = Enum.Font.GothamSemibold
+			end
 		elseif Child.Name == "Bottom1" and Child.Parent.Name == "Topbar" then
 			Child.BackgroundColor3 = Theme.TopbarColor
 		elseif Child:IsA("Frame") and Child.Name == "Outline" then
 			Child.BackgroundColor3 = Theme.OutlineColor2
 		elseif Child:IsA("UIStroke") then
-			if Child.Name == "UIStroke" then
-				Child.Color = Theme.OutlineColor2
-			end
+			Child.Color = Theme.OutlineColor2
 		elseif Child:IsA("Frame") and Child.Name == "Horizontal" then
 			if Child.Parent.Name ~= "CenterBar" then
 				Child.BackgroundColor3 = Theme.CommandLinesColor
@@ -1222,15 +1913,41 @@ function UIFuncs.LoadTheme()
 			end
 		elseif Child.Name == "Input" and Child:IsA("TextLabel") and Child.Parent:FindFirstChild("Background") then
 			Child.TextColor3 = Theme.AutofillTextColor
+		elseif Child:IsA("ScrollingFrame") then
+			Child.ScrollBarImageColor3 = Theme.AccentColor
+			Child.ScrollBarThickness = 4
+		end
+	end
+
+	if Interface and Interface:FindFirstChild("CmdBar") and Interface.CmdBar:FindFirstChild("CenterBar") then
+		local Center = Interface.CmdBar.CenterBar
+		local Input = Center:FindFirstChild("Input")
+		if Input and Input:IsA("TextBox") then
+			Input.BackgroundColor3 = Theme.CommandCenterBarColor
+			Input.BackgroundTransparency = 0
+			Input.TextColor3 = Theme.InputTextColor
+			Input.PlaceholderColor3 = Theme.SecondaryTextColor
+			Input.TextTransparency = 0
+			Input.TextStrokeTransparency = 1
+			Input.ClearTextOnFocus = false
+			Input.RichText = false
+			Input.TextScaled = false
+			Input.TextWrapped = false
+			Input.TextSize = 18
+			Input.Font = Enum.Font.GothamSemibold
+			Input.TextXAlignment = Enum.TextXAlignment.Center
+			Input.TextYAlignment = Enum.TextYAlignment.Center
+			Input.ZIndex = math.max(Center.ZIndex + 2, 8)
 		end
 	end
 
 	local NotificationTemplate = UIFuncs.GetNotificationTemplate()
 	if NotificationTemplate then
-		NotificationTemplate.BackgroundColor3 = Theme.PrimaryBGColor
+		NotificationTemplate.BackgroundColor3 = Theme.CardColor
 	end
-	Interface.Commands.Tabs.CommandInfoExample.Arguments.BackgroundColor3 = Theme.TopbarColor
-	Button.BackgroundColor3 = Theme.PrimaryBGColor
+	Interface.Commands.Tabs.CommandInfoExample.Arguments.BackgroundColor3 = Theme.CardColorAlt
+	Button.BackgroundColor3 = Theme.CardColor
+	Button.TextColor3 = Theme.PrimaryTextColor
 end
 
 function UIFuncs.ApplyModernStyling()
@@ -1268,6 +1985,109 @@ function UIFuncs.ApplyModernStyling()
 		Stroke.Color = Color or Theme.OutlineColor2
 	end
 
+	local function EnsureFill(Object, Name, ColorA, ColorB, Rotation)
+		local Fill = Object:FindFirstChild(Name)
+		if not Fill then
+			Fill =
+				UIFuncs.CreateInstance(
+					"UIGradient",
+					{
+						Name = Name,
+						Parent = Object
+					}
+				)
+		end
+
+		Fill.Color =
+			ColorSequence.new({
+				ColorSequenceKeypoint.new(0, ColorA),
+				ColorSequenceKeypoint.new(0.5, ColorB),
+				ColorSequenceKeypoint.new(1, ColorA:Lerp(ColorB, 0.3))
+			})
+		Fill.Rotation = Rotation or 90
+	end
+
+	local function EnsureAccentBar(Object, Name, ColorA, ColorB)
+		local Bar = Object:FindFirstChild(Name)
+		if not Bar then
+			Bar =
+				UIFuncs.CreateInstance(
+					"Frame",
+					{
+						Name = Name,
+						AnchorPoint = Vector2.new(0.5, 0),
+						Position = UDim2.new(0.5, 0, 0, 0),
+						Size = UDim2.new(1, -24, 0, 4),
+						BorderSizePixel = 0,
+						ZIndex = (Object.ZIndex or 1) + 1,
+						Parent = Object
+					}
+				)
+			UIFuncs.CreateInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = Bar})
+		end
+
+		Bar.BackgroundColor3 = ColorA
+		EnsureFill(Bar, "MadaAccentGradient", ColorA, ColorB, 0)
+	end
+
+	local function EnsureBackdrop()
+		local Backdrop = Interface:FindFirstChild("MadaBackdrop")
+		if not Backdrop then
+			Backdrop =
+				UIFuncs.CreateInstance(
+					"Frame",
+					{
+						Name = "MadaBackdrop",
+						Size = UDim2.fromScale(1, 1),
+						BackgroundColor3 = Theme.OverlayColor,
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						ZIndex = -10,
+						Parent = Interface
+					}
+				)
+
+			local GlowA =
+				UIFuncs.CreateInstance(
+					"Frame",
+					{
+						Name = "GlowA",
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.new(-0.06, 0, 0.05, 0),
+						Size = UDim2.fromOffset(180, 180),
+						BackgroundColor3 = Theme.AccentColor,
+						BackgroundTransparency = 0.93,
+						BorderSizePixel = 0,
+						ZIndex = -9,
+						Parent = Backdrop
+					}
+				)
+
+			local GlowB =
+				UIFuncs.CreateInstance(
+					"Frame",
+					{
+						Name = "GlowB",
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.new(1.06, 0, 0.94, 0),
+						Size = UDim2.fromOffset(220, 220),
+						BackgroundColor3 = Theme.AccentColorDark,
+						BackgroundTransparency = 0.95,
+						BorderSizePixel = 0,
+						ZIndex = -9,
+						Parent = Backdrop
+					}
+				)
+
+			UIFuncs.CreateInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = GlowA})
+			UIFuncs.CreateInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = GlowB})
+			EnsureFill(Backdrop, "MadaBackdropGradient", Theme.OverlayColor, Theme.PrimaryBGColor, 125)
+		end
+
+		Backdrop.BackgroundColor3 = Theme.OverlayColor
+		Backdrop.BackgroundTransparency = 1
+	end
+
 	local function EnsureGradient(Object, Name, ColorA, ColorB, Rotation)
 		local Gradient = Object:FindFirstChild(Name)
 		if not Gradient then
@@ -1289,11 +2109,47 @@ function UIFuncs.ApplyModernStyling()
 		Gradient.Rotation = Rotation or 90
 	end
 
+	local function RemoveGradient(Object, Name)
+		local Gradient = Object:FindFirstChild(Name)
+		if Gradient and Gradient:IsA("UIGradient") then
+			Gradient:Destroy()
+		end
+	end
+
+	local function StyleReadableButton(ButtonObject)
+		if not ButtonObject or not ButtonObject:IsA("TextButton") then
+			return
+		end
+
+		RemoveGradient(ButtonObject, "MadaButtonGradient")
+		ButtonObject.BackgroundColor3 = Theme.CardColorAlt
+		ButtonObject.TextColor3 = Theme.PrimaryTextColor
+		ButtonObject.TextTransparency = 0
+
+		for _, Descendant in next, ButtonObject:GetDescendants() do
+			if Descendant:IsA("TextLabel") then
+				if Descendant.Name == "Description" then
+					Descendant.TextColor3 = Theme.SecondaryTextColor
+				else
+					Descendant.TextColor3 = Theme.PrimaryTextColor
+				end
+				Descendant.TextTransparency = 0
+			elseif Descendant:IsA("ImageLabel") or Descendant:IsA("ImageButton") then
+				Descendant.ImageColor3 = Theme.ImageColor
+				Descendant.ImageTransparency = 0
+			end
+		end
+	end
+
+	EnsureBackdrop()
+
 	for _, Panel in next, {Interface.Commands, Interface.Options, Interface.Logs, Interface.Servers, Interface.Introduction} do
 		if Panel then
-			EnsureCorner(Panel, UDim.new(0, 16))
-			EnsureStroke(Panel, 1.2, 0.2, Theme.AccentColor)
-			EnsureGradient(Panel, "MadaPanelGradient", Theme.PrimaryBGColor, Theme.TopbarColor, 125)
+			Panel.BackgroundColor3 = Theme.CardColor
+			EnsureCorner(Panel, UDim.new(0, 22))
+			EnsureStroke(Panel, 1.4, 0.12, Theme.OutlineColor2)
+			EnsureGradient(Panel, "MadaPanelGradient", Theme.CardColor, Theme.PrimaryBGColor, 130)
+			EnsureAccentBar(Panel, "MadaPanelAccent", Theme.AccentColor, Theme.AccentSoft)
 		end
 	end
 
@@ -1305,27 +2161,128 @@ function UIFuncs.ApplyModernStyling()
 		Interface.Introduction:FindFirstChild("Topbar")
 	} do
 		if Topbar then
-			EnsureGradient(Topbar, "MadaTopbarGradient", Theme.AccentColorDark, Theme.AccentColor, 0)
-			EnsureStroke(Topbar, 1, 0.45, Theme.AccentColor)
+			Topbar.BackgroundColor3 = Theme.TopbarColor
+			EnsureGradient(Topbar, "MadaTopbarGradient", Theme.TopbarColor, Theme.CardColorAlt, 0)
+			EnsureStroke(Topbar, 1.2, 0.22, Theme.AccentSoft)
 		end
 	end
 
 	for _, Clickable in next, Interface:GetDescendants() do
 		if Clickable:IsA("TextButton") then
-			EnsureCorner(Clickable, UDim.new(0, 10))
+			EnsureCorner(Clickable, UDim.new(0, 12))
 			if Clickable ~= Button then
-				EnsureStroke(Clickable, 1, 0.45, Theme.OutlineColor2)
+				EnsureStroke(Clickable, 1.1, 0.28, Theme.OutlineColor2)
+				if
+					Interface.Options and Interface.Options:FindFirstChild("Tabs") and
+						Clickable:IsDescendantOf(Interface.Options.Tabs)
+				then
+					StyleReadableButton(Clickable)
+				else
+					EnsureGradient(Clickable, "MadaButtonGradient", Theme.CardColorAlt, Theme.TopbarColor, 35)
+				end
 			end
 		elseif Clickable:IsA("TextBox") then
-			EnsureCorner(Clickable, UDim.new(0, 10))
-			EnsureStroke(Clickable, 1, 0.5, Theme.OutlineColor2)
+			EnsureCorner(Clickable, UDim.new(0, 14))
+			EnsureStroke(Clickable, 1.2, 0.24, Theme.OutlineColor2)
+			RemoveGradient(Clickable, "MadaInputGradient")
+			Clickable.BackgroundTransparency = 0
 		elseif Clickable:IsA("ScrollingFrame") then
-			EnsureCorner(Clickable, UDim.new(0, 12))
+			EnsureCorner(Clickable, UDim.new(0, 16))
+			EnsureStroke(Clickable, 1, 0.42, Theme.OutlineColor2)
+		elseif Clickable:IsA("Frame") and Clickable.Name == "Command" then
+			EnsureCorner(Clickable, UDim.new(0, 16))
+			EnsureStroke(Clickable, 1, 0.22, Theme.OutlineColor2)
+			EnsureGradient(Clickable, "MadaCommandGradient", Theme.CardColorAlt, Theme.CardColor, 18)
+			EnsureAccentBar(Clickable, "MadaCommandAccent", Theme.AccentColorDark, Theme.AccentColor)
 		end
+	end
+
+	local NotificationTemplate = UIFuncs.GetNotificationTemplate()
+	if NotificationTemplate then
+		EnsureCorner(NotificationTemplate, UDim.new(0, 16))
+		EnsureStroke(NotificationTemplate, 1.1, 0.12, Theme.AccentColor)
+		EnsureGradient(NotificationTemplate, "MadaNotificationGradient", Theme.CardColorAlt, Theme.CardColor, 20)
+	end
+
+	if Popup then
+		EnsureCorner(Popup, UDim.new(0, 20))
+		EnsureStroke(Popup, 1.2, 0.1, Theme.AccentColor)
+		EnsureGradient(Popup, "MadaPopupGradient", Theme.CardColor, Theme.CardColorAlt, 140)
+		if Popup:FindFirstChild("Bottom") then
+			EnsureGradient(Popup.Bottom, "MadaPopupBottomGradient", Theme.TopbarColor, Theme.CardColorAlt, 0)
+		end
+	end
+
+	if Interface and Interface:FindFirstChild("Top") then
+		local TopFrame = Interface.Top
+		TopFrame.BackgroundColor3 = Theme.CardColorAlt
+		EnsureCorner(TopFrame, UDim.new(0, 18))
+		EnsureStroke(TopFrame, 1.15, 0.16, Theme.AccentSoft)
+		EnsureGradient(TopFrame, "MadaQuickBarGradient", Theme.CardColorAlt, Theme.TopbarColor, 0)
+	end
+
+	if Interface and Interface:FindFirstChild("CmdBar") then
+		local CmdBar = Interface.CmdBar
+		local Center = CmdBar:FindFirstChild("CenterBar")
+		local Left = CmdBar:FindFirstChild("LeftFill")
+		local Right = CmdBar:FindFirstChild("RightFill")
+		if Center then
+			Center.BackgroundColor3 = Theme.CommandCenterBarColor
+			Center.ClipsDescendants = true
+			Center.ZIndex = math.max(Center.ZIndex, 7)
+			EnsureCorner(Center, UDim.new(0, 12))
+			EnsureStroke(Center, 1, 0.2, Theme.OutlineColor2)
+			local Input = Center:FindFirstChild("Input")
+			if Input and Input:IsA("TextBox") then
+				Input.BackgroundTransparency = 0
+				Input.TextColor3 = Theme.InputTextColor
+				Input.PlaceholderColor3 = Theme.SecondaryTextColor
+				Input.TextTransparency = 0
+				Input.TextStrokeTransparency = 1
+				Input.TextSize = 18
+				Input.TextXAlignment = Enum.TextXAlignment.Center
+				Input.TextYAlignment = Enum.TextYAlignment.Center
+				Input.ClearTextOnFocus = false
+				Input.RichText = false
+				Input.ZIndex = Center.ZIndex + 1
+			end
+		end
+		if Left then
+			Left.BackgroundColor3 = Theme.AccentColorDark
+			Left.ZIndex = math.max(Left.ZIndex, 6)
+			EnsureCorner(Left, UDim.new(0, 12))
+		end
+		if Right then
+			Right.BackgroundColor3 = Theme.AccentColor
+			Right.ZIndex = math.max(Right.ZIndex, 6)
+			EnsureCorner(Right, UDim.new(0, 12))
+		end
+	end
+
+	if Interface and Interface.Commands and Interface.Commands:FindFirstChild("Topbar") then
+		local Search = Interface.Commands.Topbar:FindFirstChild("Search")
+		if Search and Search:IsA("TextBox") then
+			Search.BackgroundColor3 = Theme.CommandCenterBarColor
+			Search.TextColor3 = Theme.InputTextColor
+			Search.PlaceholderText = "Search commands"
+			Search.PlaceholderColor3 = Theme.SecondaryTextColor
+			EnsureCorner(Search, UDim.new(0, 12))
+			EnsureStroke(Search, 1, 0.24, Theme.OutlineColor2)
+			RemoveGradient(Search, "MadaSearchGradient")
+		end
+	end
+
+	if Button then
+		Button.Size = UDim2.fromOffset(48, 48)
+		Button.Position = UDim2.new(0.5, 0, 0.088, 0)
+		Button.TextSize = 15
 	end
 end
 
+UIFuncs.LoadTheme()
+UIFuncs.ApplyModernStyling()
 UIFuncs.RefreshInformationBranding()
+task.spawn(PlayMAIntro)
 
 
 
@@ -1356,7 +2313,7 @@ local Shadow =
 	)
 
 function UIFuncs.ClosePopup(ObjectClone)
-	UIFuncs.Tween(Shadow, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundTransparency = 1})
+	UIFuncs.Tween(Shadow, UIFuncs.SmoothStyles.Overlay, {BackgroundTransparency = 1})
 	UIFuncs.Close(ObjectClone, UIFuncs.CloseSpeed)
 	UIFuncs.Tween(ObjectClone, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
 	UIFuncs.Tween(ObjectClone.Outline, UIFuncs.SmoothStyles.FadeFast, {Transparency = 1})
@@ -1378,7 +2335,7 @@ function UIFuncs.ClosePopup(ObjectClone)
 end
 
 function UIFuncs.PopupTrigger(Title, Description, Callback)
-	UIFuncs.Tween(Shadow, TweenInfo.new(0.24, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundTransparency = 0.3})
+	UIFuncs.Tween(Shadow, UIFuncs.SmoothStyles.Overlay, {BackgroundTransparency = 0.3})
 
 	Callback = Callback or function()
 	end
@@ -1392,7 +2349,7 @@ function UIFuncs.PopupTrigger(Title, Description, Callback)
 	ObjectClone.Title.TextTransparency = 1
 	ObjectClone.Bottom.Transparency = 1
 	ObjectClone.Bottom.UIStroke.Transparency = 1
-	UIFuncs.Open(ObjectClone, 345, 92, 0.5)
+	UIFuncs.Open(ObjectClone, 345, 92, math.max(0.34, UIFuncs.FrameSpeed * 0.9))
 	UIFuncs.Tween(ObjectClone, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
 	UIFuncs.Tween(ObjectClone.Outline, UIFuncs.SmoothStyles.Fade, {Transparency = 0})
 	UIFuncs.Tween(ObjectClone.Description, UIFuncs.SmoothStyles.Fade, {TextTransparency = 0})
@@ -1464,24 +2421,37 @@ Command2.Add = function(...)
 	CommandAmount = CommandAmount + 1
 end
 
-Command.Run = function(Arguments)
-	if Arguments[1] then
-		local caller, arguments = Arguments[1], Arguments
-		table.remove(Arguments, 1)
+Command.Run = function(Arguments, PreserveLastCommand)
+	if type(Arguments) ~= "table" then
+		return
+	end
+
+	local arguments = NFuncs.ShallowCopy(Arguments)
+	if arguments[1] then
+		if not PreserveLastCommand then
+			LastRanCommand = NFuncs.ShallowCopy(arguments)
+			table.insert(CommandHistory, NFuncs.ShallowCopy(arguments))
+			if #CommandHistory > 25 then
+				table.remove(CommandHistory, 1)
+			end
+		end
+
+		local caller = arguments[1]
+		table.remove(arguments, 1)
 		local success, msg =
 			pcall(
 				function()
 					if Commands[caller:lower()] then
-					Commands[caller:lower()][1](unpack(arguments))
+						Commands[caller:lower()][1](unpack(arguments))
 				elseif Aliases[caller:lower()] then
-					Aliases[caller:lower()][1](unpack(arguments))
+						Aliases[caller:lower()][1](unpack(arguments))
 				else
-					UIFuncs.SendNotification(
-						"Mada Admin",
-						"The command <b>" .. tostring(caller) .. "</b> does not exist!",
-						5
-					)
-				end
+						UIFuncs.SendNotification(
+							"Mada Admin",
+							"The command <b>" .. tostring(caller) .. "</b> does not exist!",
+							5
+						)
+					end
 				end
 			)
 
@@ -1678,7 +2648,7 @@ spawn(
 		local Selection = Tabs.Selection
 		local Topbar = Interface.Options.Topbar
 		local BackButton = Topbar.Back
-		local TweenSpeed = 0.5
+		local TweenSpeed = math.max(0.3, UIFuncs.FrameSpeed * 0.9)
 		local CurrentTab = "Selection"
 		local Cooldown = false
 
@@ -1731,31 +2701,15 @@ spawn(
 							Cooldown = true
 							BackButton.Visible = true
 							BackButton.Icon.ImageTransparency = 1
-							spawn(
-								function()
-									for i = 1, 20 do
-										task.wait()
-										BackButton.Icon.ImageTransparency = BackButton.Icon.ImageTransparency - 0.05
-									end
-									BackButton.Icon.ImageTransparency = 0
-								end
-							)
+							UIFuncs.Tween(BackButton.Icon, UIFuncs.SmoothStyles.IconFade, {ImageTransparency = 0})
 							TargetTab.Visible = true -- 0, -350,0, 0
 							TargetTab.Position = UDim2.new(0, 350, 0, 0)
-							Services.TweenService:Create(
-								TargetTab,
-								TweenInfo.new(TweenSpeed),
-								{Position = UDim2.new(0, 0, 0, 0)}
-							):Play()
-							Services.TweenService:Create(
-								Tabs[CurrentTab],
-								TweenInfo.new(TweenSpeed),
-								{Position = UDim2.new(0, -350, 0, 0)}
-							):Play()
-							wait(TweenSpeed + 0.1)
+							UIFuncs.Tween(TargetTab, UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 0, 0, 0)})
+							UIFuncs.Tween(Tabs[CurrentTab], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, -350, 0, 0)})
+							task.wait(TweenSpeed + 0.04)
 							Tabs[CurrentTab].Visible = false
 							CurrentTab = TargetTab.Name
-							wait(1)
+							task.wait(0.08)
 							Cooldown = false
 						elseif not TargetTab then
 							UIFuncs.SendNotification(
@@ -1776,31 +2730,15 @@ spawn(
 					if not Cooldown then
 						Cooldown = true
 						BackButton.Icon.ImageTransparency = 0
-						spawn(
-							function()
-								for i = 1, 20 do
-									task.wait()
-									BackButton.Icon.ImageTransparency = BackButton.Icon.ImageTransparency + 0.05
-								end
-								BackButton.Icon.ImageTransparency = 1
-							end
-						)
+						UIFuncs.Tween(BackButton.Icon, UIFuncs.SmoothStyles.IconFade, {ImageTransparency = 1})
 						Tabs["Selection"].Visible = true -- 0, -350,0, 0
-						Services.TweenService:Create(
-							Tabs["Selection"],
-							TweenInfo.new(TweenSpeed),
-							{Position = UDim2.new(0, 0, 0, 0)}
-						):Play()
-						Services.TweenService:Create(
-							Tabs[CurrentTab],
-							TweenInfo.new(TweenSpeed),
-							{Position = UDim2.new(0, 350, 0, 0)}
-						):Play()
-						wait(TweenSpeed + 0.1)
+						UIFuncs.Tween(Tabs["Selection"], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 0, 0, 0)})
+						UIFuncs.Tween(Tabs[CurrentTab], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 350, 0, 0)})
+						task.wait(TweenSpeed + 0.04)
 						Tabs[CurrentTab].Visible = false
 						CurrentTab = "Selection"
 						BackButton.Visible = false
-						wait(TweenSpeed + 0.1)
+						task.wait(0.08)
 						Cooldown = false
 					end
 				end
@@ -1959,8 +2897,13 @@ end
 function PlayerFuncs.Fly(Boolean, SpeedValue)
 	Speed = SpeedValue
 	SetFlying(Boolean)
+	CommandToggles.Fly = Boolean and true or false
 
-	Services.RunService.RenderStepped:Connect(onUpdate)
+	if CommandToggles.Fly then
+		Runtime.BindConnection("FlyRenderStep", Services.RunService.RenderStepped, onUpdate)
+	else
+		Runtime.Disconnect("FlyRenderStep")
+	end
 end
 
 Command.Add(
@@ -2001,22 +2944,22 @@ Command.Add(
 	{"AntiKick / AntiK", "If the game tries to kick you on the client it wont work"},
 	{"None"},
 	function()
-		local OldNamecall
-		OldNamecall =
-			hookmetamethod(
-				game,
-				"__namecall",
-				newcclosure(
-					function(Self, ...)
-						local Method = getnamecallmethod()
-						if Self == Services.LocalPlayer and (Method == "Kick" or Method == "kick") then
-						return
-					end
-						return OldNamecall(Self, ...)
-					end
-				)
+		local Success, ModeOrReason = NFuncs.InstallNamecallProtection()
+		if not Success then
+			UIFuncs.SendNotification(
+				"Mada Admin",
+				"Anti kick unavailable: <b>" .. tostring(ModeOrReason or "unknown reason") .. "</b>",
+				6
 			)
-		UIFuncs.SendNotification("Mada Admin", "Anti kick loaded", 5)
+			return
+		end
+
+		CommandToggles.AntiKick = not CommandToggles.AntiKick
+		UIFuncs.SendNotification(
+			"Mada Admin",
+			"Anti kick " .. (CommandToggles.AntiKick and "enabled" or "disabled") .. " via <b>" .. tostring(ModeOrReason) .. "</b>",
+			5
+		)
 	end
 )
 
@@ -2025,24 +2968,22 @@ Command.Add(
 	{"AntiTeleport / AntiT", "If the game tries to teleport you on the client it wont work"},
 	{"None"},
 	function()
-		local OldNameCall
-		OldNameCall =
-			hookmetamethod(
-				game,
-				"__namecall",
-				newcclosure(
-					function(Self, ...)
-						if
-						Self == Services.TeleportService and getnamecallmethod():lower() == "teleport" or
-						getnamecallmethod() == "TeleportToPlaceInstance"
-					then
-						return
-					end
-						return OldNameCall(Self, ...)
-					end
-				)
+		local Success, ModeOrReason = NFuncs.InstallNamecallProtection()
+		if not Success then
+			UIFuncs.SendNotification(
+				"Mada Admin",
+				"Anti teleport unavailable: <b>" .. tostring(ModeOrReason or "unknown reason") .. "</b>",
+				6
 			)
-		UIFuncs.SendNotification("Mada Admin", "Anti teleport loaded", 5)
+			return
+		end
+
+		CommandToggles.AntiTeleport = not CommandToggles.AntiTeleport
+		UIFuncs.SendNotification(
+			"Mada Admin",
+			"Anti teleport " .. (CommandToggles.AntiTeleport and "enabled" or "disabled") .. " via <b>" .. tostring(ModeOrReason) .. "</b>",
+			5
+		)
 	end
 )
 
@@ -2085,10 +3026,11 @@ Command.Add(
 	{"Loop / Lp", "Loops whatever command you want : example : loop walkspeed 123"},
 	{"Number"},
 	function(...)
+		local LoopArguments = {...}
 		CommandToggles.Loop = true
 		repeat
 			wait()
-			Command.Run(...)
+			Command.Run(NFuncs.ShallowCopy(LoopArguments))
 		until not CommandToggles.Loop
 	end
 )
@@ -2139,12 +3081,67 @@ Command.Add(
 )
 
 Command.Add(
+	{"Sit"},
+	{"Sit", "Makes your character sit"},
+	{"None"},
+	function()
+		if PlayerFuncs.Sit() then
+			UIFuncs.SendNotification("Mada Admin", "Sit used", 4)
+		else
+			UIFuncs.SendNotification("Mada Admin", "Could not sit right now", 4)
+		end
+	end
+)
+
+Command.Add(
+	{"HeadSit", "HSit"},
+	{"HeadSit / HSit", "Sits your character on top of a target player's head"},
+	{"Username"},
+	function(Username)
+		if not Username or Username == "" then
+			UIFuncs.SendNotification("Mada Admin", "Usage: <b>" .. Settings.Prefix .. "headsit username</b>", 4)
+			return
+		end
+
+		if PlayerFuncs.HeadSit(Username) then
+			UIFuncs.SendNotification("Mada Admin", "HeadSit on <b>" .. tostring(Username) .. "</b> started", 4)
+		else
+			UIFuncs.SendNotification("Mada Admin", "Could not find a valid HeadSit target", 4)
+		end
+	end
+)
+
+Command.Add(
+	{"UnHeadSit", "UnHSit"},
+	{"UnHeadSit / UnHSit", "Stops head sitting"},
+	{"None"},
+	function()
+		CommandToggles.HeadSit = false
+		UIFuncs.SendNotification("Mada Admin", "HeadSit stopped", 4)
+	end
+)
+
+Command.Add(
+	{"Lay", "Laydown", "Lie"},
+	{"Lay / Laydown / Lie", "Makes your character lay down"},
+	{"None"},
+	function()
+		if PlayerFuncs.Lay() then
+			UIFuncs.SendNotification("Mada Admin", "Lay used", 4)
+		else
+			UIFuncs.SendNotification("Mada Admin", "Could not use lay right now", 4)
+		end
+	end
+)
+
+Command.Add(
 	{"RunLastCommand", "RLC"},
 	{"RunLastCommand / RLC", "Runs the last command you ran"},
 	{"None"},
 	function()
 		if LastRanCommand then
-			Command.Run(tostring(LastRanCommand))
+			local PreviousCommand = NFuncs.ShallowCopy(LastRanCommand)
+			Command.Run(PreviousCommand, true)
 		end
 	end
 )
@@ -3202,43 +4199,57 @@ Command.Add(
 	{"SetUnanchoredGravity / SetUAGrav / SUG", "Sets the gravity of unanchored parts"},
 	{"Gravity (Optional)"},
 	function(Gravity)
-		if not Gravity then
-			Gravity = 0
+		Gravity = tonumber(Gravity) or 0
+		CommandToggles.UnanchoredGravity = true
+		Runtime.State.UnanchoredGravityValue = Gravity
+
+		local function SetGrav(Part)
+			if not Part or not Part:IsA("BasePart") or Part.Anchored then
+				return
+			end
+
+			if Services.Character and Part:IsDescendantOf(Services.Character) then
+				return
+			end
+
+			local Force = Part:FindFirstChild("MadaGravityForce")
+			if not Force then
+				Force = UIFuncs.CreateInstance("BodyForce", {Parent = Part, Name = "MadaGravityForce"})
+			end
+
+			Force.Force = Part:GetMass() * Vector3.new(Gravity, workspace.Gravity, Gravity)
 		end
 
-		spawn(
+		Runtime.BindConnection(
+			"UnanchoredGravityPulse",
+			Services.RunService.Heartbeat,
 			function()
-				while true do
-					Services.LocalPlayer.MaximumSimulationRadius = math.pow(math.huge, math.huge) * math.huge
-					Services.LocalPlayer.SimulationRadius = math.pow(math.huge, math.huge) * math.huge
-					task.wait()
+				if CommandToggles.UnanchoredGravity then
+					Services.LocalPlayer.MaximumSimulationRadius = math.huge
+					Services.LocalPlayer.SimulationRadius = math.huge
 				end
 			end
 		)
 
-		local function SetGrav(Part)
-			if Part:FindFirstChild("BodyForce") then
-				return
+		Runtime.BindConnection(
+			"UnanchoredGravityDescendantAdded",
+			workspace.DescendantAdded,
+			function(Part)
+				SetGrav(Part)
 			end
-			UIFuncs.CreateInstance(
-				"BodyForce",
-				{Parent = Part, Force = Part:GetMass() * Vector3.new(Gravity, workspace.Gravity, Gravity)}
-			)
-		end
+		)
 
 		for i, Descendant in next, workspace:GetDescendants() do
-			if Descendant:IsA("Part") and Descendant.Anchored == false then
-				if not (Descendant:IsDescendantOf(Services.Character)) then
-					SetGrav(Descendant)
-				end
-			end
+			SetGrav(Descendant)
 		end
 
-		workspace.DescendantAdded:Connect(
-			function(Part)
-				if Part:IsA("Part") and Part.Anchored == false then
-					if not (Part:IsDescendantOf(Services.Character)) then
-						SetGrav(Part)
+		Runtime.RegisterCleanup(
+			"UnanchoredGravity",
+			function()
+				for _, Descendant in next, workspace:GetDescendants() do
+					local Force = Descendant:FindFirstChild("MadaGravityForce")
+					if Force then
+						Force:Destroy()
 					end
 				end
 			end
@@ -3249,11 +4260,27 @@ Command.Add(
 )
 
 Command.Add(
+	{"UnsetUnanchoredGravity", "UnSUG"},
+	{"UnsetUnanchoredGravity / UnSUG", "Stops the custom unanchored gravity override"},
+	{"None"},
+	function()
+		CommandToggles.UnanchoredGravity = false
+		Runtime.Disconnect("UnanchoredGravityPulse")
+		Runtime.Disconnect("UnanchoredGravityDescendantAdded")
+		Runtime.RunCleanup("UnanchoredGravity")
+		UIFuncs.SendNotification("Mada Admin", "Restored default unanchored gravity behaviour", 5)
+	end
+)
+
+Command.Add(
 	{"GravityGun", "GravGun", "GG"},
 	{"GravityGun / GravGun / GG", "Lets you move around unanchored parts"},
 	{"None"},
 	function()
-		loadstring(game:HttpGet("https://raw.githubusercontent.com/qipurblx/Script/main/Gravity%20Gun"))()
+		NFuncs.ExecuteRemoteScript(
+			"https://raw.githubusercontent.com/qipurblx/Script/main/Gravity%20Gun",
+			"Gravity Gun"
+		)
 	end
 )
 Command.Add(
@@ -3262,26 +4289,27 @@ Command.Add(
 	{"Number"},
 	function(Speed)
 		CommandToggles.TPWalk = true
-		while CommandToggles.TPWalk and Services.Character and Services.Character:FindFirstChild("Humanoid") do
-			pcall(
-				function()
-					TPWalking = Services.RunService.Heartbeat:Wait()
-					if Services.Character:FindFirstChildWhichIsA("Humanoid").MoveDirection.Magnitude > 0 then
-						if Speed then
-							Services.Character:TranslateBy(
-								Services.Character:FindFirstChildWhichIsA("Humanoid").MoveDirection * tonumber(Speed) *
-									TPWalking *
-									10
-							)
-						else
-							Services.Character:TranslateBy(
-								Services.Character:FindFirstChildWhichIsA("Humanoid").MoveDirection * TPWalking * 10
-							)
+		Speed = tonumber(Speed)
+		Runtime.StartLoop(
+			"TPWalk",
+			function(Token)
+				while
+					Token.Active and CommandToggles.TPWalk and Services.Character and
+						Services.Character:FindFirstChild("Humanoid")
+				do
+					pcall(
+						function()
+							local Delta = Services.RunService.Heartbeat:Wait()
+							local Humanoid = Services.Character and Services.Character:FindFirstChildWhichIsA("Humanoid")
+							if Humanoid and Humanoid.MoveDirection.Magnitude > 0 then
+								local Distance = (Speed or 1) * Delta * 10
+								Services.Character:TranslateBy(Humanoid.MoveDirection * Distance)
+							end
 						end
-					end
+					)
 				end
-			)
-		end
+			end
+		)
 	end
 )
 
@@ -3292,6 +4320,7 @@ Command.Add(
 	function()
 		CommandToggles.TPWalk = false
 		TPWalking = false
+		Runtime.StopLoop("TPWalk")
 	end
 )
 
@@ -3491,7 +4520,7 @@ Command.Add(
 	{"Dex / D", "Runs an explorer script"},
 	{"None"},
 	function()
-		loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/dex.lua"))()
+		NFuncs.ExecuteRemoteScript("https://raw.githubusercontent.com/infyiff/backup/main/dex.lua", "Dex")
 	end
 )
 
@@ -3755,61 +4784,101 @@ Command.Add(
 	{"ControlNPCs / CNPCs", "Controls your selected NPC"},
 	{"None"},
 	function()
-		Services.Mouse.Button1Down:Connect(
-			function()
-				if Services.Mouse.Target and Services.UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-					local NPC = Services.Mouse.Target.Parent
-					local NPCRootPart = NPC.HumanoidRootPart
-					local A0 = Instance.new("Attachment")
-					local AP = Instance.new("AlignPosition")
-					local AO = Instance.new("AlignOrientation")
-					local A1 = Instance.new("Attachment")
+		CommandToggles.ControlNPCs = not CommandToggles.ControlNPCs
+		Runtime.Disconnect("ControlNPCsClick")
+		Runtime.StopLoop("ControlNPCsNoCollide")
+		Runtime.RunCleanup("ControlNPCsSelection")
 
-					for _, Descendant in next, NPC:GetDescendants() do
-						if Descendant:IsA("BasePart") then
-							Services.RunService.Stepped:Connect(
-								function()
-									Descendant.CanCollide = false
-								end
-							)
-						end
-					end
-					Services.Character.HumanoidRootPart:BreakJoints()
-					for _, Descendant in next, Services.Character:GetDescendants() do
-						if Descendant:IsA("BasePart") then
-							if
-								Descendant.Name == "HumanoidRootPart" or Descendant.Name == "UpperTorso" or
-								Descendant.Name == "Head"
-							then
-							else
-								Descendant:Destroy()
+		if not CommandToggles.ControlNPCs then
+			UIFuncs.SendNotification("Mada Admin", "ControlNPCs disabled", 5)
+			return
+		end
+
+		Runtime.BindConnection(
+			"ControlNPCsClick",
+			Services.Mouse.Button1Down,
+			function()
+				if not (Services.Mouse.Target and Services.UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)) then
+					return
+				end
+
+				local NPC = Services.Mouse.Target:FindFirstAncestorOfClass("Model") or Services.Mouse.Target.Parent
+				local NPCRootPart = NPC and NPC:FindFirstChild("HumanoidRootPart")
+				local CharacterRoot = Services.Character and Services.Character:FindFirstChild("HumanoidRootPart")
+				local CharacterHead = Services.Character and Services.Character:FindFirstChild("Head")
+				local CharacterTorso = Services.Character and Services.Character:FindFirstChild("UpperTorso")
+				if not (NPC and NPCRootPart and CharacterRoot and CharacterHead and CharacterTorso) then
+					return
+				end
+
+				Runtime.StopLoop("ControlNPCsNoCollide")
+				Runtime.RunCleanup("ControlNPCsSelection")
+
+				local CreatedInstances = {}
+				local function NewTrackedInstance(ClassName, Parent)
+					local Object = Instance.new(ClassName)
+					Object.Parent = Parent
+					table.insert(CreatedInstances, Object)
+					return Object
+				end
+
+				local A0 = NewTrackedInstance("Attachment", NPCRootPart)
+				local AP = NewTrackedInstance("AlignPosition", NPCRootPart)
+				local AO = NewTrackedInstance("AlignOrientation", NPCRootPart)
+				local A1 = NewTrackedInstance("Attachment", CharacterRoot)
+
+				Runtime.RegisterCleanup(
+					"ControlNPCsSelection",
+					function()
+						for _, Object in next, CreatedInstances do
+							if Object and Object.Parent then
+								Object:Destroy()
 							end
 						end
 					end
+				)
 
-					Services.Character.HumanoidRootPart.Position =
-						Services.Character.HumanoidRootPart.Position + Vector3.new(5, 0, 0)
-					Services.Character.Head.Anchored = true
-					Services.Character.UpperTorso.Anchored = true
-					A0.Parent = NPCRootPart
-					AP.Parent = NPCRootPart
-					AO.Parent = NPCRootPart
-					AP.Responsiveness = 200
-					AP.MaxForce = math.huge
-					AO.MaxTorque = math.huge
-					AO.Responsiveness = 200
-					AP.Attachment0 = A0
-					AP.Attachment1 = A1
-					AO.Attachment1 = A1
-					AO.Attachment0 = A0
-					A1.Parent = Services.Character.HumanoidRootPart
+				CharacterRoot:BreakJoints()
+				for _, Descendant in next, Services.Character:GetDescendants() do
+					if Descendant:IsA("BasePart") then
+						if Descendant.Name ~= "HumanoidRootPart" and Descendant.Name ~= "UpperTorso" and Descendant.Name ~= "Head" then
+							Descendant:Destroy()
+						end
+					end
 				end
+
+				CharacterRoot.Position = CharacterRoot.Position + Vector3.new(5, 0, 0)
+				CharacterHead.Anchored = true
+				CharacterTorso.Anchored = true
+
+				AP.Responsiveness = 200
+				AP.MaxForce = math.huge
+				AO.MaxTorque = math.huge
+				AO.Responsiveness = 200
+				AP.Attachment0 = A0
+				AP.Attachment1 = A1
+				AO.Attachment1 = A1
+				AO.Attachment0 = A0
+
+				Runtime.StartLoop(
+					"ControlNPCsNoCollide",
+					function(Token)
+						while Token.Active and CommandToggles.ControlNPCs and NPC and NPC.Parent do
+							for _, Descendant in next, NPC:GetDescendants() do
+								if Descendant:IsA("BasePart") then
+									Descendant.CanCollide = false
+								end
+							end
+							Services.RunService.Stepped:Wait()
+						end
+					end
+				)
 			end
 		)
 
 		UIFuncs.SendNotification(
 			"Mada Admin",
-			"ControlNPCs loaded, hold the ctrl key and press on a npc for it to work",
+			"ControlNPCs enabled, hold ctrl and click an NPC to control it",
 			5
 		)
 	end
@@ -4147,7 +5216,11 @@ Command.Add(
 	{"RemoteSpy / RS", "Loads Remote Spy V3 / Creds : Amity"},
 	{"None"},
 	function()
-		loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua"))()
+		NFuncs.ExecuteRemoteScript(
+			"https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua",
+			"Remote Spy",
+			true
+		)
 	end
 )
 Command.Add(
@@ -4396,7 +5469,7 @@ Command.Add(
 	{"F3X", "Loads f3x (Alternative to BTools)"},
 	{"None"},
 	function()
-		loadstring(game:GetObjects("rbxassetid://6695644299")[1].Source)()
+		NFuncs.ExecuteAssetScript(6695644299, "F3X")
 	end
 )
 
@@ -4405,7 +5478,16 @@ Command.Add(
 	{"TriggerBot / TBot / TB", "If your cursor is on a player the command will automatically click the mouse for you"},
 	{"None"},
 	function()
-		CommandToggles.TBot = true
+		CommandToggles.TBot = not CommandToggles.TBot
+		Runtime.Disconnect("TriggerBotToggle")
+		Runtime.StopLoop("TriggerBot")
+		Runtime.RunCleanup("TriggerBotUI")
+
+		if not CommandToggles.TBot then
+			UIFuncs.SendNotification("Mada Admin", "Trigger bot disabled", 5)
+			return
+		end
+
 		local UI = UIFuncs.CreateInstance("ScreenGui", {Parent = Interface, Name = "Toggle"})
 		local TextLabel =
 			UIFuncs.CreateInstance(
@@ -4422,26 +5504,60 @@ Command.Add(
 					TextWrapped = true
 				}
 			)
-		local UICorner = UIFuncs.CreateInstance("UICorner", {Parent = TextLabel, CornerRadius = UDim.new(1, 0)})
-		local Toggle = Enum.KeyCode.Q
+		UIFuncs.CreateInstance("UICorner", {Parent = TextLabel, CornerRadius = UDim.new(1, 0)})
 
-		UIS.InputBegan:Connect(
-			function(Input)
-				if Input.KeyCode == Toggle then
-					CommandToggles.TBot = not CommandToggles.TBot
-					TextLabel.Text = "Trigger Bot : " .. tostring(CommandToggles.TBot)
+		Runtime.RegisterCleanup(
+			"TriggerBotUI",
+			function()
+				if UI and UI.Parent then
+					UI:Destroy()
 				end
 			end
 		)
 
-		while CommandToggles.TBot do
-			task.wait()
-			if Services.Mouse.Target then
-				if game.Players:GetPlayerFromCharacter(Services.Mouse.Target.Parent) then
-					mouse1click()
+		Runtime.BindConnection(
+			"TriggerBotToggle",
+			UIS.InputBegan,
+			function(Input, GameProcessed)
+				if not GameProcessed and Input.KeyCode == Enum.KeyCode.Q then
+					CommandToggles.TBot = not CommandToggles.TBot
+					TextLabel.Text = "TriggerBot : " .. tostring(CommandToggles.TBot)
+					if not CommandToggles.TBot then
+						Runtime.StopLoop("TriggerBot")
+					else
+						Runtime.StartLoop(
+							"TriggerBot",
+							function(Token)
+								while Token.Active and CommandToggles.TBot do
+									task.wait()
+									if Services.Mouse.Target then
+										if game.Players:GetPlayerFromCharacter(Services.Mouse.Target.Parent) then
+											mouse1click()
+										end
+									end
+								end
+							end
+						)
+					end
 				end
 			end
-		end
+		)
+
+		Runtime.StartLoop(
+			"TriggerBot",
+			function(Token)
+				while Token.Active and CommandToggles.TBot do
+					task.wait()
+					if Services.Mouse.Target then
+						if game.Players:GetPlayerFromCharacter(Services.Mouse.Target.Parent) then
+							mouse1click()
+						end
+					end
+				end
+			end
+		)
+
+		UIFuncs.SendNotification("Mada Admin", "Trigger bot enabled, press Q to pause or resume it", 5)
 	end
 )
 Command.Add(
@@ -4639,8 +5755,7 @@ Command.Add(
 					local Selection = Tabs.Selection
 					local Topbar = Logs.Topbar
 					local BackButton = Topbar.Back
-					local TweenService = Services.TweenService
-					local TweenSpeed = 0.5
+					local TweenSpeed = math.max(0.3, UIFuncs.FrameSpeed * 0.9)
 					local CurrentTab = "Selection"
 					local Cooldown = false
 					for i, v in next, Tabs:GetChildren() do
@@ -4660,32 +5775,15 @@ Command.Add(
 										Cooldown = true
 										BackButton.Visible = true
 										BackButton.Icon.ImageTransparency = 1
-										spawn(
-											function()
-												for i = 1, 20 do
-													task.wait()
-													BackButton.Icon.ImageTransparency =
-														BackButton.Icon.ImageTransparency - 0.05
-												end
-												BackButton.Icon.ImageTransparency = 0
-											end
-										)
+										UIFuncs.Tween(BackButton.Icon, UIFuncs.SmoothStyles.IconFade, {ImageTransparency = 0})
 										Tabs[v.Name].Visible = true -- 0, -350,0, 0
 										Tabs[v.Name].Position = UDim2.new(0, 350, 0, 0)
-										TweenService:Create(
-											Tabs[v.Name],
-											TweenInfo.new(TweenSpeed),
-											{Position = UDim2.new(0, 0, 0, 0)}
-										):Play()
-										TweenService:Create(
-											Tabs[CurrentTab],
-											TweenInfo.new(TweenSpeed),
-											{Position = UDim2.new(0, -350, 0, 0)}
-										):Play()
-										wait(TweenSpeed + 0.1)
+										UIFuncs.Tween(Tabs[v.Name], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 0, 0, 0)})
+										UIFuncs.Tween(Tabs[CurrentTab], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, -350, 0, 0)})
+										task.wait(TweenSpeed + 0.04)
 										Tabs[CurrentTab].Visible = false
 										CurrentTab = v.Name
-										wait(1)
+										task.wait(0.08)
 										Cooldown = false
 									end
 								end
@@ -4700,32 +5798,15 @@ Command.Add(
 								if not Cooldown then
 									Cooldown = true
 									BackButton.Icon.ImageTransparency = 0
-									spawn(
-										function()
-											for i = 1, 20 do
-												task.wait()
-												BackButton.Icon.ImageTransparency =
-													BackButton.Icon.ImageTransparency + 0.05
-											end
-											BackButton.Icon.ImageTransparency = 1
-										end
-									)
+									UIFuncs.Tween(BackButton.Icon, UIFuncs.SmoothStyles.IconFade, {ImageTransparency = 1})
 									Tabs["Selection"].Visible = true -- 0, -350,0, 0
-									TweenService:Create(
-										Tabs["Selection"],
-										TweenInfo.new(TweenSpeed),
-										{Position = UDim2.new(0, 0, 0, 0)}
-									):Play()
-									TweenService:Create(
-										Tabs[CurrentTab],
-										TweenInfo.new(TweenSpeed),
-										{Position = UDim2.new(0, 350, 0, 0)}
-									):Play()
-									wait(TweenSpeed + 0.1)
+									UIFuncs.Tween(Tabs["Selection"], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 0, 0, 0)})
+									UIFuncs.Tween(Tabs[CurrentTab], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 350, 0, 0)})
+									task.wait(TweenSpeed + 0.04)
 									Tabs[CurrentTab].Visible = false
 									CurrentTab = "Selection"
 									BackButton.Visible = false
-									wait(TweenSpeed)
+									task.wait(0.08)
 									Cooldown = false
 								end
 							end
@@ -4875,19 +5956,11 @@ Command.Add(
 			Logs.Size = UDim2.fromOffset(200, 200)
 			Logs.Visible = true
 			Popup.Open(Logs, 337, 324, UIFuncs.FrameSpeed)
-
-			spawn(
-				function()
-					for i = 1, 20 do
-						task.wait()
-						Logs.BackgroundTransparency = Logs.BackgroundTransparency - 0.05
-						Logs.Tabs.GroupTransparency = Logs.Tabs.GroupTransparency - 0.05
-					end
-				end
-			)
-			wait(0.2)
+			UIFuncs.Tween(Logs, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
+			UIFuncs.Tween(Logs.Tabs, UIFuncs.SmoothStyles.Fade, {GroupTransparency = 0})
+			task.wait(0.18)
 			Logs.Topbar.Visible = true
-			wait(0.1)
+			task.wait(0.08)
 			Logs.Tabs.Visible = true
 			Logs.Topbar.Close.Visible = true
 			Logs.Topbar.Title.Visible = true
@@ -4895,16 +5968,8 @@ Command.Add(
 
 		local function CloseLogs()
 			Popup.Close(Logs, UIFuncs.CloseSpeed)
-
-			spawn(
-				function()
-					for i = 1, 20 do
-						task.wait()
-						Logs.BackgroundTransparency = Logs.BackgroundTransparency + 0.05
-						Logs.Tabs.GroupTransparency = Logs.BackgroundTransparency + 0.05
-					end
-				end
-			)
+			UIFuncs.Tween(Logs, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
+			UIFuncs.Tween(Logs.Tabs, UIFuncs.SmoothStyles.FadeFast, {GroupTransparency = 1})
 			Logs.Tabs.Visible = false
 			wait(0.05)
 			Logs.Topbar.Close.Visible = false
@@ -4985,19 +6050,11 @@ Command.Add(
 			Servers.Size = UDim2.fromOffset(200, 200)
 			Servers.Visible = true
 			Popup.Open(Servers, 337, 324, UIFuncs.FrameSpeed)
-
-			spawn(
-				function()
-					for i = 1, 20 do
-						task.wait()
-						Servers.BackgroundTransparency = Servers.BackgroundTransparency - 0.05
-						Servers.Tabs.GroupTransparency = Servers.Tabs.GroupTransparency - 0.05
-					end
-				end
-			)
-			wait(0.2)
+			UIFuncs.Tween(Servers, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
+			UIFuncs.Tween(Servers.Tabs, UIFuncs.SmoothStyles.Fade, {GroupTransparency = 0})
+			task.wait(0.18)
 			Servers.Topbar.Visible = true
-			wait(0.1)
+			task.wait(0.08)
 			Servers.Tabs.Visible = true
 			Servers.Topbar.Close.Visible = true
 			Servers.Topbar.Title.Visible = true
@@ -5005,16 +6062,8 @@ Command.Add(
 
 		local function CloseServers()
 			Popup.Close(Servers, UIFuncs.CloseSpeed)
-
-			spawn(
-				function()
-					for i = 1, 20 do
-						task.wait()
-						Servers.BackgroundTransparency = Servers.BackgroundTransparency + 0.05
-						Servers.Tabs.GroupTransparency = Servers.BackgroundTransparency + 0.05
-					end
-				end
-			)
+			UIFuncs.Tween(Servers, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
+			UIFuncs.Tween(Servers.Tabs, UIFuncs.SmoothStyles.FadeFast, {GroupTransparency = 1})
 			Servers.Tabs.Visible = false
 			wait(0.05)
 			Servers.Topbar.Close.Visible = false
@@ -5035,7 +6084,11 @@ Command.Add(
 
 		local URL = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?limit=100"
 		local ServerTable = {}
-		local Info = game:GetService("HttpService"):JSONDecode(game:HttpGetAsync(URL))
+		local success, Info = NFuncs.SafeJSONGet(URL)
+		if not success or type(Info) ~= "table" or type(Info.data) ~= "table" then
+			UIFuncs.SendNotification("Mada Admin", "Unable to load the public server list right now", 5)
+			return
+		end
 
 		for Index, Server in next, Info.data do
 			if type(Server) == "table" and Server.maxPlayers > Server.playing then
@@ -5087,19 +6140,11 @@ Command.Add(
 			Commands.Size = UDim2.fromOffset(200, 200)
 			Commands.Visible = true
 			Popup.Open(Commands, 308, 310, UIFuncs.FrameSpeed)
-
-			spawn(
-				function()
-					for i = 1, 20 do
-						task.wait()
-						Commands.BackgroundTransparency = Commands.BackgroundTransparency - 0.05
-						Commands.Tabs.GroupTransparency = Commands.Tabs.GroupTransparency - 0.05
-					end
-				end
-			)
-			wait(0.2)
+			UIFuncs.Tween(Commands, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
+			UIFuncs.Tween(Commands.Tabs, UIFuncs.SmoothStyles.Fade, {GroupTransparency = 0})
+			task.wait(0.18)
 			Topbar.Visible = true
-			wait(0.1)
+			task.wait(0.08)
 			Commands.Tabs.Visible = true
 			Topbar.Close.Visible = true
 		end
@@ -5108,18 +6153,10 @@ Command.Add(
 
 		local function CloseCommands()
 			Popup.Close(Commands, UIFuncs.CloseSpeed)
-
-			spawn(
-				function()
-					for i = 1, 20 do
-						task.wait()
-						Commands.BackgroundTransparency = Commands.BackgroundTransparency + 0.05
-						Commands.Tabs.GroupTransparency = Commands.BackgroundTransparency + 0.05
-					end
-				end
-			)
+			UIFuncs.Tween(Commands, UIFuncs.SmoothStyles.FadeFast, {BackgroundTransparency = 1})
+			UIFuncs.Tween(Commands.Tabs, UIFuncs.SmoothStyles.FadeFast, {GroupTransparency = 1})
 			Commands.Tabs.Visible = false
-			wait(0.05)
+			task.wait(0.05)
 			Topbar.Close.Visible = false
 			Topbar.Visible = false
 			wait(0.25)
@@ -5144,7 +6181,7 @@ Command.Add(
 
 		--// tabs and other stuff
 
-		local TweenSpeed = 0.5
+		local TweenSpeed = math.max(0.3, UIFuncs.FrameSpeed * 0.9)
 		local CurrentTab = "Commands"
 		local Cooldown = false
 		for i, v in next, Tabs:GetChildren() do
@@ -5167,31 +6204,15 @@ Command.Add(
 							Cooldown = true
 							BackButton.Visible = true
 							BackButton.Icon.ImageTransparency = 1
-							spawn(
-								function()
-									for i = 1, 20 do
-										task.wait()
-										BackButton.Icon.ImageTransparency = BackButton.Icon.ImageTransparency - 0.05
-									end
-									BackButton.Icon.ImageTransparency = 0
-								end
-							)
+							UIFuncs.Tween(BackButton.Icon, UIFuncs.SmoothStyles.IconFade, {ImageTransparency = 0})
 							Tabs[v.Name].Visible = true -- 0, -350,0, 0
 							Tabs[v.Name].Position = UDim2.new(0, 310, 0, 0)
-							Services.TweenService:Create(
-								Tabs[v.Name],
-								TweenInfo.new(TweenSpeed),
-								{Position = UDim2.new(0, 0, 0, 0)}
-							):Play()
-							Services.TweenService:Create(
-								Tabs[CurrentTab],
-								TweenInfo.new(TweenSpeed),
-								{Position = UDim2.new(0, -310, 0, 0)}
-							):Play()
-							wait(TweenSpeed + 0.1)
+							UIFuncs.Tween(Tabs[v.Name], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 0, 0, 0)})
+							UIFuncs.Tween(Tabs[CurrentTab], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, -310, 0, 0)})
+							task.wait(TweenSpeed + 0.04)
 							Tabs[CurrentTab].Visible = false
 							CurrentTab = v.Name
-							wait(1)
+							task.wait(0.08)
 							Cooldown = false
 						end
 					end
@@ -5204,27 +6225,11 @@ Command.Add(
 				if CurrentTab == "Commands" then
 				else
 					BackButton.Icon.ImageTransparency = 0
-					spawn(
-						function()
-							for i = 1, 20 do
-								task.wait()
-								BackButton.Icon.ImageTransparency = BackButton.Icon.ImageTransparency + 0.05
-							end
-							BackButton.Icon.ImageTransparency = 1
-						end
-					)
+					UIFuncs.Tween(BackButton.Icon, UIFuncs.SmoothStyles.IconFade, {ImageTransparency = 1})
 					Tabs["Commands"].Visible = true -- 0, -350,0, 0
-					Services.TweenService:Create(
-						Tabs["Commands"],
-						TweenInfo.new(TweenSpeed),
-						{Position = UDim2.new(0, 0, 0, 0)}
-					):Play()
-					Services.TweenService:Create(
-						Tabs[CurrentTab],
-						TweenInfo.new(TweenSpeed),
-						{Position = UDim2.new(0, 310, 0, 0)}
-					):Play()
-					wait(TweenSpeed + 0.1)
+					UIFuncs.Tween(Tabs["Commands"], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 0, 0, 0)})
+					UIFuncs.Tween(Tabs[CurrentTab], UIFuncs.SmoothStyles.TabSlide, {Position = UDim2.new(0, 310, 0, 0)})
+					task.wait(TweenSpeed + 0.04)
 					Tabs[CurrentTab].Visible = false
 					CurrentTab = "Commands"
 					BackButton.Visible = false
@@ -5417,6 +6422,13 @@ Command.Add(
 			UIFuncs.SendNotification("Mada Admin", "Closing Mada Admin...", 1.5)
 		end)
 		task.wait(0.05)
+
+		CommandToggles.TBot = false
+		CommandToggles.TPWalk = false
+		CommandToggles.ControlNPCs = false
+		CommandToggles.Fly = false
+		CommandToggles.UnanchoredGravity = false
+		Runtime.CleanupAll()
 
 		if getgenv then
 			getgenv().MadaLoaded = false
@@ -5746,6 +6758,39 @@ local RightFill = CommandBar.RightFill
 CenterBar.Visible = false
 LeftFill.Visible = false
 RightFill.Visible = false
+
+local function RefreshCommandInputVisibility()
+	for _, Child in next, CommandInput:GetChildren() do
+		if Child:IsA("UIGradient") then
+			Child:Destroy()
+		end
+	end
+
+	CommandInput.BackgroundColor3 = Settings.Themes.CommandCenterBarColor
+	CommandInput.BackgroundTransparency = 0
+	CommandInput.TextTransparency = 0
+	CommandInput.TextStrokeColor3 = Color3.fromRGB(12, 8, 7)
+	CommandInput.TextStrokeTransparency = 0.7
+	CommandInput.TextColor3 = Settings.Themes.InputTextColor
+	CommandInput.PlaceholderColor3 = Settings.Themes.SecondaryTextColor
+	CommandInput.ClearTextOnFocus = false
+	CommandInput.RichText = false
+	CommandInput.TextScaled = false
+	CommandInput.TextWrapped = false
+	CommandInput.TextSize = 18
+	CommandInput.Font = Enum.Font.GothamSemibold
+	CommandInput.AnchorPoint = Vector2.new(0.5, 0.5)
+	CommandInput.Position = UDim2.new(0.5, 0, 0.5, 0)
+	CommandInput.Size = UDim2.new(1, -18, 1, -8)
+	CommandInput.TextXAlignment = Enum.TextXAlignment.Center
+	CommandInput.TextYAlignment = Enum.TextYAlignment.Center
+	CenterBar.ClipsDescendants = true
+	CenterBar.ZIndex = math.max(CenterBar.ZIndex, 7)
+	CommandInput.ZIndex = CenterBar.ZIndex + 1
+end
+
+RefreshCommandInputVisibility()
+
 local ResizeFrame = Interface.Resizeable
 local Cmds = Interface.Commands
 local CommandsTabs = Cmds.Tabs
@@ -5837,11 +6882,9 @@ GUI.SearchCommands = function()
 				local n = math.sqrt(index) * 125
 				local yPos = (index - 1) * 28
 				local newPos = UDim2.new(0.5, 0, 0, yPos)
-				GUI.Tween(
+				UIFuncs.Tween(
 					v,
-					"Quint",
-					"Out",
-					0.3,
+					UIFuncs.SmoothStyles.AutoFillOpen,
 					{
 						Size = UDim2.new(0.5, n, 0, 25),
 						Position = lastFrame and newPos or UDim2.new(0.5, 0, 0, yPos)
@@ -5862,31 +6905,41 @@ for _, AutoFill in next, CommandAutoFill:GetChildren() do
 end
 
 GUI.BarSelect = function(Speed)
+	local OpenDuration = Speed ~= nil and Speed or math.max(0.22, UIFuncs.FrameSpeed * 0.6)
+	local OpenTween =
+		Speed ~= nil and TweenInfo.new(OpenDuration, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out) or
+		UIFuncs.SmoothStyles.CmdBarOpen
 	LeftFill.Visible = true
 	RightFill.Visible = true
 	CenterBar.Visible = true
-	GUI.Tween(CenterBar, "Sine", "Out", Speed or 0.25, {Size = UDim2.new(0, 250, 1, 15)})
-	GUI.Tween(LeftFill, "Quad", "Out", Speed or 0.3, {Position = UDim2.new(0, 0, 0.5, 0)})
-	GUI.Tween(RightFill, "Quad", "Out", Speed or 0.3, {Position = UDim2.new(1, 0, 0.5, 0)})
+	RefreshCommandInputVisibility()
+	UIFuncs.Tween(CenterBar, OpenTween, {Size = UDim2.new(0, 250, 1, 15)})
+	UIFuncs.Tween(LeftFill, OpenTween, {Position = UDim2.new(0, 0, 0.5, 0)})
+	UIFuncs.Tween(RightFill, OpenTween, {Position = UDim2.new(1, 0, 0.5, 0)})
 end
 
 GUI.BarDeselect = function(Speed)
-	local CloseSpeed = Speed or 0.3
-	GUI.Tween(CenterBar, "Sine", "Out", Speed or 0.25, {Size = UDim2.new(0, 250, 0, 0)})
-	GUI.Tween(LeftFill, "Sine", "In", CloseSpeed, {Position = UDim2.new(-0.5, 100, 0.5, 0)})
-	GUI.Tween(RightFill, "Sine", "In", CloseSpeed, {Position = UDim2.new(1.5, -100, 0.5, 0)})
+	local CloseDuration = Speed ~= nil and Speed or math.max(0.16, UIFuncs.CloseSpeed * 0.78)
+	local CloseTween =
+		Speed ~= nil and TweenInfo.new(CloseDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.In) or
+		UIFuncs.SmoothStyles.CmdBarClose
+	UIFuncs.Tween(CenterBar, CloseTween, {Size = UDim2.new(0, 250, 0, 0)})
+	UIFuncs.Tween(LeftFill, CloseTween, {Position = UDim2.new(-0.5, 100, 0.5, 0)})
+	UIFuncs.Tween(RightFill, CloseTween, {Position = UDim2.new(1.5, -100, 0.5, 0)})
 	task.spawn(function()
-		task.wait(CloseSpeed + 0.05)
+		task.wait(CloseDuration + 0.05)
 		CenterBar.Visible = false
 		LeftFill.Visible = false
 		RightFill.Visible = false
 	end)
+	local AutoFillIndex = 0
 	for i, v in next, CommandAutoFill:GetChildren() do
 		if v:IsA("Frame") then
+			AutoFillIndex = AutoFillIndex + 1
 			task.spawn(
 				function()
-					wait(math.random(1, 200) / 2000)
-					GUI.Tween(v, "Back", "In", 0.35, {Size = UDim2.new(0, 0, 0, 25)})
+					task.wait((AutoFillIndex - 1) * 0.012)
+					UIFuncs.Tween(v, UIFuncs.SmoothStyles.AutoFillClose, {Size = UDim2.new(0, 0, 0, 25)})
 				end
 			)
 		end
