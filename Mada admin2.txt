@@ -2086,6 +2086,18 @@ function UIFuncs.ApplyModernStyling()
 
 		Backdrop.BackgroundColor3 = Theme.OverlayColor
 		Backdrop.BackgroundTransparency = 1
+
+		local GlowA = Backdrop:FindFirstChild("GlowA")
+		if GlowA and GlowA:IsA("Frame") then
+			GlowA.Visible = false
+			GlowA.BackgroundTransparency = 1
+		end
+
+		local GlowB = Backdrop:FindFirstChild("GlowB")
+		if GlowB and GlowB:IsA("Frame") then
+			GlowB.Visible = false
+			GlowB.BackgroundTransparency = 1
+		end
 	end
 
 	local function EnsureGradient(Object, Name, ColorA, ColorB, Rotation)
