@@ -541,6 +541,21 @@ function NFuncs.SafeJSONGet(URL)
 	end)
 end
 
+function NFuncs.UrlEncode(Text)
+	local success, Encoded =
+		pcall(function()
+			return Services.HttpService:UrlEncode(tostring(Text or ""))
+		end)
+
+	if success and type(Encoded) == "string" then
+		return Encoded:gsub("%+", "%%20")
+	end
+
+	return tostring(Text or ""):gsub("([^%w%-_%.~])", function(Character)
+		return string.format("%%%02X", string.byte(Character))
+	end)
+end
+
 function NFuncs.InstallNamecallProtection()
 	if Runtime.Flags.NamecallProtectionInstalled then
 		return true, Runtime.Flags.NamecallProtectionMode or "unknown"
@@ -2396,6 +2411,789 @@ function UIFuncs.PopupTrigger(Title, Description, Callback)
 			UIFuncs.ClosePopup(ObjectClone)
 		end
 	)
+end
+
+function UIFuncs.OpenScriptBloxGui(DefaultQuery)
+	local Existing = Interface:FindFirstChild("MadaScriptBlox")
+	if Existing then
+		Existing.Visible = true
+		local ExistingSearch = Existing:FindFirstChild("Search", true)
+		if ExistingSearch and ExistingSearch:IsA("TextBox") then
+			if DefaultQuery and tostring(DefaultQuery) ~= "" then
+				ExistingSearch.Text = tostring(DefaultQuery)
+			end
+			ExistingSearch:CaptureFocus()
+		end
+		return
+	end
+
+	local Theme = Settings.Themes
+	local ViewportSize = Services.Camera and Services.Camera.ViewportSize or Vector2.new(430, 410)
+	local PanelWidth = math.min(430, math.max(300, ViewportSize.X - 24))
+	local PanelHeight = math.min(410, math.max(320, ViewportSize.Y - 80))
+	local Panel =
+		UIFuncs.CreateInstance(
+			"Frame",
+			{
+				Name = "MadaScriptBlox",
+				Parent = Interface,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+				Size = UDim2.fromOffset(PanelWidth, PanelHeight),
+				BackgroundColor3 = Theme.PrimaryBGColor,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ClipsDescendants = true,
+				ZIndex = 20
+			}
+		)
+	UIFuncs.CreateInstance("UICorner", {Parent = Panel, CornerRadius = UDim.new(0, 18)})
+	UIFuncs.CreateInstance(
+		"UIStroke",
+		{
+			Parent = Panel,
+			Color = Theme.AccentColor,
+			Thickness = 1.2,
+			Transparency = 0.08
+		}
+	)
+
+	local Topbar =
+		UIFuncs.CreateInstance(
+			"Frame",
+			{
+				Name = "Topbar",
+				Parent = Panel,
+				Size = UDim2.new(1, 0, 0, 42),
+				BackgroundColor3 = Theme.TopbarColor,
+				BorderSizePixel = 0,
+				ZIndex = 21
+			}
+		)
+	UIFuncs.CreateInstance("UICorner", {Parent = Topbar, CornerRadius = UDim.new(0, 18)})
+
+	UIFuncs.CreateInstance(
+		"TextLabel",
+		{
+			Name = "Title",
+			Parent = Topbar,
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0, 16, 0, 0),
+			Size = UDim2.new(1, -58, 1, 0),
+			Font = Enum.Font.GothamBold,
+			Text = "ScriptBlox Search",
+			TextColor3 = Theme.PrimaryTextColor,
+			TextSize = 15,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 22
+		}
+	)
+
+	local CloseButton =
+		UIFuncs.CreateInstance(
+			"TextButton",
+			{
+				Name = "Close",
+				Parent = Topbar,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -12, 0.5, 0),
+				Size = UDim2.fromOffset(28, 28),
+				BackgroundTransparency = 1,
+				Text = "x",
+				TextColor3 = Theme.PrimaryTextColor,
+				TextSize = 18,
+				Font = Enum.Font.GothamBold,
+				AutoButtonColor = false,
+				ZIndex = 22
+			}
+		)
+
+	local Search =
+		UIFuncs.CreateInstance(
+			"TextBox",
+			{
+				Name = "Search",
+				Parent = Panel,
+				Position = UDim2.new(0, 16, 0, 56),
+				Size = UDim2.new(1, -32, 0, 38),
+				BackgroundColor3 = Theme.CommandCenterBarColor,
+				BorderSizePixel = 0,
+				ClearTextOnFocus = false,
+				Font = Enum.Font.GothamSemibold,
+				PlaceholderColor3 = Theme.SecondaryTextColor,
+				PlaceholderText = "Search scripts in real time...",
+				Text = tostring(DefaultQuery or ""),
+				TextColor3 = Theme.InputTextColor,
+				TextSize = 14,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = 21
+			}
+		)
+	UIFuncs.CreateInstance("UICorner", {Parent = Search, CornerRadius = UDim.new(0, 12)})
+	UIFuncs.CreateInstance(
+		"UIStroke",
+		{
+			Parent = Search,
+			Color = Theme.OutlineColor2,
+			Thickness = 1,
+			Transparency = 0.22
+		}
+	)
+
+	local Status =
+		UIFuncs.CreateInstance(
+			"TextLabel",
+			{
+				Name = "Status",
+				Parent = Panel,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 16, 0, 100),
+				Size = UDim2.new(1, -32, 0, 24),
+				Font = Enum.Font.GothamMedium,
+				Text = "Type at least 2 characters to search.",
+				TextColor3 = Theme.SecondaryTextColor,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = 21
+			}
+		)
+
+	local Results =
+		UIFuncs.CreateInstance(
+			"ScrollingFrame",
+			{
+				Name = "Results",
+				Parent = Panel,
+				Position = UDim2.new(0, 16, 0, 130),
+				Size = UDim2.new(1, -32, 1, -194),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				CanvasSize = UDim2.new(0, 0, 0, 0),
+				ScrollBarImageColor3 = Theme.AccentColor,
+				ScrollBarThickness = 4,
+				ZIndex = 21
+			}
+		)
+
+	local Layout =
+		UIFuncs.CreateInstance(
+			"UIListLayout",
+			{
+				Parent = Results,
+				Padding = UDim.new(0, 8),
+				SortOrder = Enum.SortOrder.LayoutOrder
+			}
+		)
+
+	local Pager =
+		UIFuncs.CreateInstance(
+			"Frame",
+			{
+				Name = "Pager",
+				Parent = Panel,
+				AnchorPoint = Vector2.new(0.5, 1),
+				Position = UDim2.new(0.5, 0, 1, -30),
+				Size = UDim2.new(1, -32, 0, 26),
+				BackgroundTransparency = 1,
+				ZIndex = 21
+			}
+		)
+
+	local PrevPage =
+		UIFuncs.CreateInstance(
+			"TextButton",
+			{
+				Name = "Prev",
+				Parent = Pager,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 0, 0.5, 0),
+				Size = UDim2.fromOffset(72, 26),
+				BackgroundColor3 = Theme.CommandCenterBarColor,
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Text = "< Prev",
+				TextColor3 = Theme.PrimaryTextColor,
+				TextSize = 11,
+				AutoButtonColor = false,
+				ZIndex = 22
+			}
+		)
+	UIFuncs.CreateInstance("UICorner", {Parent = PrevPage, CornerRadius = UDim.new(0, 9)})
+	UIFuncs.CreateInstance("UIStroke", {Parent = PrevPage, Color = Theme.AccentColor, Thickness = 1, Transparency = 0.24})
+
+	local PageInfo =
+		UIFuncs.CreateInstance(
+			"TextLabel",
+			{
+				Name = "PageInfo",
+				Parent = Pager,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 78, 0, 0),
+				Size = UDim2.new(1, -156, 1, 0),
+				Font = Enum.Font.GothamSemibold,
+				Text = "Page 1 / 1",
+				TextColor3 = Theme.SecondaryTextColor,
+				TextSize = 11,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = 22
+			}
+		)
+
+	local NextPage =
+		UIFuncs.CreateInstance(
+			"TextButton",
+			{
+				Name = "Next",
+				Parent = Pager,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, 0, 0.5, 0),
+				Size = UDim2.fromOffset(72, 26),
+				BackgroundColor3 = Theme.CommandCenterBarColor,
+				BorderSizePixel = 0,
+				Font = Enum.Font.GothamBold,
+				Text = "Next >",
+				TextColor3 = Theme.PrimaryTextColor,
+				TextSize = 11,
+				AutoButtonColor = false,
+				ZIndex = 22
+			}
+		)
+	UIFuncs.CreateInstance("UICorner", {Parent = NextPage, CornerRadius = UDim.new(0, 9)})
+	UIFuncs.CreateInstance("UIStroke", {Parent = NextPage, Color = Theme.AccentColor, Thickness = 1, Transparency = 0.24})
+
+	local Powered =
+		UIFuncs.CreateInstance(
+			"TextLabel",
+			{
+				Name = "Powered",
+				Parent = Panel,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 1),
+				Position = UDim2.new(0.5, 0, 1, -8),
+				Size = UDim2.new(1, -32, 0, 20),
+				Font = Enum.Font.GothamMedium,
+				Text = "Powered by ScriptBlox.com",
+				TextColor3 = Theme.SecondaryTextColor,
+				TextSize = 11,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = 21
+			}
+		)
+
+	local function ResizeCanvas()
+		Results.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 8)
+	end
+
+	Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(ResizeCanvas)
+
+	local function ClearResults()
+		for _, Child in next, Results:GetChildren() do
+			if Child:IsA("Frame") then
+				Child:Destroy()
+			end
+		end
+		ResizeCanvas()
+	end
+
+	local function SetStatus(Text, Color)
+		Status.Text = tostring(Text or "")
+		Status.TextColor3 = Color or Theme.SecondaryTextColor
+	end
+
+	local function CopyScript(Source)
+		if type(Source) ~= "string" or Source == "" then
+			UIFuncs.SendNotification("ScriptBlox", "No script source was returned.", 4)
+			return
+		end
+
+		if setclipboard then
+			setclipboard(Source)
+			UIFuncs.SendNotification("ScriptBlox", "Script copied to clipboard.", 4)
+		else
+			UIFuncs.SendNotification("ScriptBlox", "setclipboard is not supported by this executor.", 4)
+		end
+	end
+
+	local function CopyText(Value, Label)
+		if type(Value) ~= "string" or Value == "" then
+			UIFuncs.SendNotification("ScriptBlox", "Nothing to copy.", 4)
+			return
+		end
+
+		if setclipboard then
+			setclipboard(Value)
+			UIFuncs.SendNotification("ScriptBlox", tostring(Label or "Text") .. " copied.", 4)
+		else
+			UIFuncs.SendNotification("ScriptBlox", "setclipboard is not supported by this executor.", 4)
+		end
+	end
+
+	local function RunScript(Source, Title)
+		if type(Source) ~= "string" or Source == "" then
+			UIFuncs.SendNotification("ScriptBlox", "No script source was returned.", 4)
+			return
+		end
+
+		if not loadstring then
+			UIFuncs.SendNotification("ScriptBlox", "loadstring is not supported by this executor.", 4)
+			return
+		end
+
+		local Compiled, CompileError = loadstring(Source)
+		if type(Compiled) ~= "function" then
+			warn("[Mada Admin] ScriptBlox compile failed:", CompileError)
+			UIFuncs.SendNotification("ScriptBlox", "Could not compile <b>" .. tostring(Title or "script") .. "</b>.", 5)
+			return
+		end
+
+		task.spawn(function()
+			local RunSuccess, RunError = pcall(Compiled)
+			if RunSuccess then
+				UIFuncs.SendNotification("ScriptBlox", "Executed <b>" .. tostring(Title or "script") .. "</b>.", 4)
+			else
+				warn("[Mada Admin] ScriptBlox script failed:", RunError)
+				UIFuncs.SendNotification("ScriptBlox", "Script failed. Check console.", 5)
+			end
+		end)
+	end
+
+	local function CreateSmallButton(Parent, Text, Position, Callback)
+		local ButtonObject =
+			UIFuncs.CreateInstance(
+				"TextButton",
+				{
+					Parent = Parent,
+					Position = Position,
+					Size = UDim2.fromOffset(52, 24),
+					BackgroundColor3 = Theme.CommandCenterBarColor,
+					BorderSizePixel = 0,
+					Font = Enum.Font.GothamBold,
+					Text = Text,
+					TextColor3 = Theme.PrimaryTextColor,
+					TextSize = 10,
+					AutoButtonColor = false,
+					ZIndex = 23
+				}
+			)
+		UIFuncs.CreateInstance("UICorner", {Parent = ButtonObject, CornerRadius = UDim.new(0, 8)})
+		UIFuncs.CreateInstance(
+			"UIStroke",
+			{
+				Parent = ButtonObject,
+				Color = Theme.AccentColor,
+				Thickness = 1,
+				Transparency = 0.18
+			}
+		)
+		ButtonObject.MouseButton1Click:Connect(Callback)
+		return ButtonObject
+	end
+
+	local ImageCacheCounter = 0
+	local ImageCacheSession = tostring(math.floor(os.clock() * 1000000))
+
+	local function NormalizeImageUrl(ImageUrl)
+		ImageUrl = tostring(ImageUrl or "")
+		if ImageUrl == "" then
+			return ""
+		end
+
+		if ImageUrl:find("^rbxasset") or ImageUrl:find("^rbxthumb") then
+			return ImageUrl
+		end
+
+		if ImageUrl:sub(1, 2) == "//" then
+			return "https:" .. ImageUrl
+		end
+
+		if ImageUrl:sub(1, 1) == "/" then
+			return "https://scriptblox.com" .. ImageUrl
+		end
+
+		return ImageUrl
+	end
+
+	local function CacheImageForDisplay(ImageUrl)
+		ImageUrl = NormalizeImageUrl(ImageUrl)
+		if ImageUrl == "" then
+			return ""
+		end
+
+		if ImageUrl:find("^rbxasset") or ImageUrl:find("^rbxthumb") then
+			return ImageUrl
+		end
+
+		if not (writefile and getcustomasset) then
+			return ImageUrl
+		end
+
+		local Folder = "Mada-Admin-V2/ScriptBloxImages"
+		pcall(function()
+			if makefolder and isfolder and not isfolder(Folder) then
+				makefolder(Folder)
+			end
+		end)
+
+		local Extension = ImageUrl:lower():match("%.([%w]+)%??") or "png"
+		if Extension == "jpeg" then
+			Extension = "jpg"
+		elseif Extension ~= "png" and Extension ~= "jpg" then
+			Extension = "png"
+		end
+
+		ImageCacheCounter = ImageCacheCounter + 1
+		local Path = Folder .. "/image_" .. ImageCacheSession .. "_" .. tostring(ImageCacheCounter) .. "." .. Extension
+		local Success, Data = NFuncs.SafeHttpGet(ImageUrl, true)
+		if not Success or type(Data) ~= "string" or Data == "" then
+			return ImageUrl
+		end
+
+		local Wrote =
+			pcall(function()
+				writefile(Path, Data)
+			end)
+		if not Wrote then
+			return ImageUrl
+		end
+
+		local AssetSuccess, Asset =
+			pcall(function()
+				return getcustomasset(Path)
+			end)
+
+		return AssetSuccess and Asset or ImageUrl
+	end
+
+	local function GetScriptImage(ScriptInfo)
+		if type(ScriptInfo) ~= "table" then
+			return ""
+		end
+
+		if type(ScriptInfo.image) == "string" and ScriptInfo.image ~= "" then
+			return NormalizeImageUrl(ScriptInfo.image)
+		end
+
+		-- Do not fall back to the game thumbnail here: it makes ScriptBlox
+		-- cards look like they belong to another post.
+		return ""
+	end
+
+	local function AddResult(ScriptInfo, Index)
+		local Title = tostring(ScriptInfo.title or "Untitled")
+		local GameName = "Universal"
+		if type(ScriptInfo.game) == "table" and ScriptInfo.game.name then
+			GameName = tostring(ScriptInfo.game.name)
+		end
+		local Source = tostring(ScriptInfo.script or "")
+		local ImageUrl = GetScriptImage(ScriptInfo)
+		local Meta = {}
+		table.insert(Meta, GameName)
+		table.insert(Meta, tostring(ScriptInfo.views or 0) .. " views")
+		table.insert(Meta, ScriptInfo.verified and "verified" or "unverified")
+		if ScriptInfo.key then
+			table.insert(Meta, "key")
+		end
+		if ScriptInfo.isPatched then
+			table.insert(Meta, "patched")
+		end
+
+		local Card =
+			UIFuncs.CreateInstance(
+				"Frame",
+				{
+					Name = "Result",
+					Parent = Results,
+					LayoutOrder = Index,
+					Size = UDim2.new(1, -6, 0, 108),
+					BackgroundColor3 = Theme.CardColorAlt,
+					BorderSizePixel = 0,
+					ZIndex = 22
+				}
+			)
+		UIFuncs.CreateInstance("UICorner", {Parent = Card, CornerRadius = UDim.new(0, 12)})
+		UIFuncs.CreateInstance(
+			"UIStroke",
+			{
+				Parent = Card,
+				Color = Theme.OutlineColor2,
+				Thickness = 1,
+				Transparency = 0.36
+			}
+		)
+
+		local Thumbnail =
+			UIFuncs.CreateInstance(
+				"ImageLabel",
+				{
+					Parent = Card,
+					BackgroundColor3 = Theme.CommandCenterBarColor,
+					BorderSizePixel = 0,
+					Image = "",
+					ImageColor3 = Color3.fromRGB(255, 255, 255),
+					Position = UDim2.new(0, 10, 0, 10),
+					ScaleType = Enum.ScaleType.Crop,
+					Size = UDim2.fromOffset(72, 72),
+					ZIndex = 23
+			}
+		)
+		UIFuncs.CreateInstance("UICorner", {Parent = Thumbnail, CornerRadius = UDim.new(0, 10)})
+		UIFuncs.CreateInstance(
+			"UIStroke",
+			{
+				Parent = Thumbnail,
+				Color = Theme.OutlineColor2,
+				Thickness = 1,
+				Transparency = 0.48
+			}
+		)
+		local ImagePlaceholder =
+			UIFuncs.CreateInstance(
+				"TextLabel",
+				{
+					Parent = Thumbnail,
+					BackgroundTransparency = 1,
+					Size = UDim2.fromScale(1, 1),
+					Font = Enum.Font.GothamBold,
+					Text = "No\nimage",
+					TextColor3 = Theme.SecondaryTextColor,
+					TextSize = 10,
+					TextTransparency = ImageUrl == "" and 0.12 or 1,
+					TextWrapped = true,
+					ZIndex = 24
+				}
+			)
+		task.spawn(function()
+			local DisplayImage = CacheImageForDisplay(ImageUrl)
+			if Thumbnail and Thumbnail.Parent then
+				Thumbnail.Image = DisplayImage
+				ImagePlaceholder.TextTransparency = DisplayImage ~= "" and 1 or 0.12
+			end
+		end)
+
+		UIFuncs.CreateInstance(
+			"TextLabel",
+			{
+				Parent = Card,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 90, 0, 8),
+				Size = UDim2.new(1, -102, 0, 20),
+				Font = Enum.Font.GothamBold,
+				Text = Title,
+				TextColor3 = Theme.PrimaryTextColor,
+				TextSize = 13,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = 23
+			}
+		)
+
+		UIFuncs.CreateInstance(
+			"TextLabel",
+			{
+				Parent = Card,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 90, 0, 30),
+				Size = UDim2.new(1, -102, 0, 42),
+				Font = Enum.Font.GothamMedium,
+				Text = table.concat(Meta, "  |  "),
+				TextColor3 = Theme.SecondaryTextColor,
+				TextSize = 11,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				ZIndex = 23
+			}
+		)
+
+		CreateSmallButton(Card, "Run", UDim2.new(0, 90, 1, -30), function()
+			RunScript(Source, Title)
+		end)
+
+		CreateSmallButton(Card, "Copy", UDim2.new(0, 146, 1, -30), function()
+			CopyScript(Source)
+		end)
+
+		CreateSmallButton(Card, "Image", UDim2.new(0, 202, 1, -30), function()
+			CopyText(ImageUrl, "Image URL")
+		end)
+	end
+
+	local function BuildScriptBloxQueries(Query)
+		local Base = tostring(Query or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+		local Queries = {}
+		local Seen = {}
+
+		local function Add(Value)
+			Value = tostring(Value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+			if Value ~= "" and not Seen[Value:lower()] then
+				Seen[Value:lower()] = true
+				table.insert(Queries, Value)
+			end
+		end
+
+		Add(Base)
+
+		if Base:find("%s") then
+			Add(Base:gsub("%s+", "-"))
+			Add(Base:gsub("%s+", ""))
+			for Word in Base:gmatch("%S+") do
+				if #Word >= 2 then
+					Add(Word)
+				end
+			end
+		end
+
+		return Queries
+	end
+
+	local SearchToken = 0
+	local CurrentPage = 1
+	local TotalPages = 1
+
+	local function UpdatePager(Page, Pages)
+		TotalPages = math.max(1, tonumber(Pages) or 1)
+		CurrentPage = math.min(math.max(1, tonumber(Page) or 1), TotalPages)
+		PageInfo.Text = "Page " .. tostring(CurrentPage) .. " / " .. tostring(TotalPages)
+
+		local CanGoBack = CurrentPage > 1
+		local CanGoNext = CurrentPage < TotalPages
+		PrevPage.TextTransparency = CanGoBack and 0 or 0.55
+		PrevPage.BackgroundTransparency = CanGoBack and 0 or 0.35
+		NextPage.TextTransparency = CanGoNext and 0 or 0.55
+		NextPage.BackgroundTransparency = CanGoNext and 0 or 0.35
+	end
+
+	UpdatePager(1, 1)
+
+	local function SearchScriptBlox(Query, Token, Page)
+		Query = tostring(Query or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+		Page = math.max(1, tonumber(Page) or CurrentPage or 1)
+		if #Query < 2 then
+			ClearResults()
+			SetStatus("Type at least 2 characters to search.")
+			UpdatePager(1, 1)
+			return
+		end
+
+		ClearResults()
+		SetStatus("Searching ScriptBlox... page " .. tostring(Page))
+
+		task.spawn(function()
+			local BestScripts
+			local UsedQuery = Query
+			local UsedStrictSearch = true
+			local BestTotalPages = 1
+			local HadRequestSuccess = false
+			local QueryCandidates = BuildScriptBloxQueries(Query)
+			local StrictModes = {true, false}
+
+			for _, StrictSearch in ipairs(StrictModes) do
+				for _, Candidate in ipairs(QueryCandidates) do
+					local URL =
+						"https://scriptblox.com/api/script/search?q=" ..
+						NFuncs.UrlEncode(Candidate) ..
+						"&page=" ..
+						tostring(Page) ..
+						"&max=8&sortBy=updatedAt&order=desc&strict=" ..
+						(StrictSearch and "true" or "false")
+					local Success, Data = NFuncs.SafeJSONGet(URL)
+					if Token ~= SearchToken then
+						return
+					end
+
+					if Success and type(Data) == "table" then
+						HadRequestSuccess = true
+						local Result = Data.result
+						local CandidateTotalPages = math.max(1, tonumber(Result and Result.totalPages) or 1)
+						BestTotalPages = math.max(BestTotalPages, CandidateTotalPages)
+						local Scripts = Result and Result.scripts
+						if type(Scripts) == "table" and #Scripts > 0 then
+							BestScripts = Scripts
+							UsedQuery = Candidate
+							UsedStrictSearch = StrictSearch
+							BestTotalPages = CandidateTotalPages
+							break
+						end
+					end
+				end
+
+				if BestScripts then
+					break
+				end
+			end
+
+			if not HadRequestSuccess then
+				UpdatePager(Page, 1)
+				SetStatus("ScriptBlox request failed.", Theme.DangerColor)
+				return
+			end
+
+			if type(BestScripts) ~= "table" or #BestScripts == 0 then
+				UpdatePager(Page, BestTotalPages)
+				SetStatus("No results found. Tried phrase and spaced variants.", Theme.SecondaryTextColor)
+				return
+			end
+
+			UpdatePager(Page, BestTotalPages)
+			local MatchLabel = UsedStrictSearch and "" or " relaxed"
+			if UsedQuery ~= Query then
+				SetStatus(
+					"Showing " ..
+						tostring(math.min(#BestScripts, 8)) ..
+							MatchLabel .. " result(s) for '" .. UsedQuery .. "' on page " .. tostring(CurrentPage) .. "."
+				)
+			else
+				SetStatus(
+					"Showing " ..
+						tostring(math.min(#BestScripts, 8)) ..
+							MatchLabel .. " result(s) on page " .. tostring(CurrentPage) .. "."
+				)
+			end
+
+			for Index, ScriptInfo in ipairs(BestScripts) do
+				if Index > 8 then
+					break
+				end
+				AddResult(ScriptInfo, Index)
+			end
+		end)
+	end
+
+	local function QueueSearch(Page)
+		CurrentPage = math.max(1, tonumber(Page) or 1)
+		SearchToken = SearchToken + 1
+		local Token = SearchToken
+		local Query = Search.Text
+		local PageToSearch = CurrentPage
+		task.delay(0.42, function()
+			if Token == SearchToken then
+				SearchScriptBlox(Query, Token, PageToSearch)
+			end
+		end)
+	end
+
+	Search:GetPropertyChangedSignal("Text"):Connect(function()
+		QueueSearch(1)
+	end)
+	PrevPage.MouseButton1Click:Connect(function()
+		if CurrentPage > 1 then
+			QueueSearch(CurrentPage - 1)
+		end
+	end)
+	NextPage.MouseButton1Click:Connect(function()
+		if CurrentPage < TotalPages then
+			QueueSearch(CurrentPage + 1)
+		end
+	end)
+	CloseButton.MouseButton1Click:Connect(function()
+		Panel.Visible = false
+	end)
+
+	UIFuncs.Drag(Panel, 18)
+	UIFuncs.Open(Panel, PanelWidth, PanelHeight, math.max(0.32, UIFuncs.FrameSpeed * 0.85))
+	UIFuncs.Tween(Panel, UIFuncs.SmoothStyles.Fade, {BackgroundTransparency = 0})
+	Search:CaptureFocus()
+	QueueSearch(1)
 end
 
 Interface.Start.Visible = false
@@ -6422,6 +7220,16 @@ Command.Add(
 			"Unknown setting. Try <b>" .. Settings.Prefix .. "settings help</b>",
 			5
 		)
+	end
+)
+
+Command.Add(
+	{"ScriptBlox", "SB", "ScriptSearch"},
+	{"ScriptBlox / SB / ScriptSearch", "Opens a live ScriptBlox search GUI"},
+	{"Search"},
+	function(...)
+		local Query = table.concat({...}, " ")
+		UIFuncs.OpenScriptBloxGui(Query)
 	end
 )
 
